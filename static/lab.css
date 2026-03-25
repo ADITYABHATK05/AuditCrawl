@@ -241,6 +241,10 @@ tbody td {
   min-width: 1100px;
 }
 
+.results-table {
+  table-layout: fixed;
+}
+
 .results-table tbody td {
   white-space: normal;
   overflow: visible;
@@ -253,11 +257,39 @@ tbody td {
   min-width: 280px;
 }
 
+.results-table .endpoint-cell {
+  overflow: hidden;
+}
+
+.results-table .endpoint-code {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.results-table th:nth-child(1),
+.results-table td:nth-child(1) { width: 15%; }
+
+.results-table th:nth-child(2),
+.results-table td:nth-child(2) { width: 9%; }
+
+.results-table th:nth-child(3),
+.results-table td:nth-child(3) { width: 21%; }
+
+.results-table th:nth-child(4),
+.results-table td:nth-child(4) { width: 25%; }
+
+.results-table th:nth-child(5),
+.results-table td:nth-child(5) { width: 30%; }
+
 .results-table details {
   border: 1px solid #334153;
   border-radius: 8px;
   background: #171b22;
   padding: 0.35rem 0.5rem;
+  margin-bottom: 0.45rem;
 }
 
 .results-table summary {
@@ -265,6 +297,11 @@ tbody td {
   color: #9fc2ff;
   font-size: 0.86rem;
   margin-bottom: 0.35rem;
+}
+
+.results-table pre {
+  max-height: 220px;
+  overflow: auto;
 }
 
 .report-code-wrap {

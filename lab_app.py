@@ -293,6 +293,84 @@ def _precise_remediation(finding: dict) -> str:
     return "Apply secure-by-default controls for this issue type, validate all untrusted input, and enforce least privilege on the affected endpoint."
 
 
+def _exact_fix_snippet(finding: dict) -> str:
+    vuln = str(finding.get("vulnerability_type", "")).lower()
+    evidence = str(finding.get("evidence", ""))
+    endpoint = str(finding.get("endpoint", ""))
+
+    quoted_match = re.search(r"'([^']+)'", evidence)
+    field_name = quoted_match.group(1) if quoted_match else "input_value"
+
+    if "xss" in vuln:
+        return (
+            "# Exact fix: escape untrusted input before rendering\n"
+            "from markupsafe import escape\n"
+            "\n"
+            f"unsafe_value = request.values.get('{field_name}', '')\n"
+            "safe_value = escape(unsafe_value)\n"
+            "return render_template('result.html', query=safe_value)\n"
+            "\n"
+            "# Also add a strict CSP header\n"
+            "response.headers['Content-Security-Policy'] = \"default-src 'self'\"\n"
+        )
+
+    if "sql" in vuln:
+        return (
+            "# Exact fix: parameterized SQL query\n"
+            "from sqlalchemy import text\n"
+            "\n"
+            f"value = request.values.get('{field_name}', '')\n"
+            "stmt = text('SELECT * FROM users WHERE username = :value')\n"
+            "rows = session.execute(stmt, {'value': value}).fetchall()\n"
+            "\n"
+            "# Do not return DB errors to clients\n"
+            "return {'status': 'ok'}\n"
+        )
+
+    if "ssrf" in vuln:
+        return (
+            "# Exact fix: enforce outbound URL allow-list\n"
+            "from urllib.parse import urlparse\n"
+            "\n"
+            "ALLOWED_HOSTS = {'api.example.com'}\n"
+            f"candidate = request.values.get('{field_name}', '')\n"
+            "parsed = urlparse(candidate)\n"
+            "if parsed.scheme != 'https' or parsed.hostname not in ALLOWED_HOSTS:\n"
+            "    raise ValueError('Blocked outbound URL')\n"
+            "\n"
+            "# Safe request only after validation\n"
+            "resp = httpx.get(candidate, timeout=5)\n"
+        )
+
+    if "misconfiguration" in vuln:
+        header_match = re.search(r"Missing ([A-Za-z\-]+) header", evidence, flags=re.IGNORECASE)
+        missing_header = (header_match.group(1) if header_match else "").lower()
+
+        if missing_header == "content-security-policy":
+            return "response.headers['Content-Security-Policy'] = \"default-src 'self'\"\n"
+        if missing_header == "x-frame-options":
+            return "response.headers['X-Frame-Options'] = 'DENY'\n"
+        if missing_header == "x-content-type-options":
+            return "response.headers['X-Content-Type-Options'] = 'nosniff'\n"
+        if "hsts" in evidence.lower() or "strict-transport-security" in evidence.lower():
+            return "response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'\n"
+
+        return (
+            "# Exact fix: apply baseline secure headers\n"
+            "response.headers['Content-Security-Policy'] = \"default-src 'self'\"\n"
+            "response.headers['X-Frame-Options'] = 'DENY'\n"
+            "response.headers['X-Content-Type-Options'] = 'nosniff'\n"
+            "response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'\n"
+        )
+
+    return (
+        "# Exact fix template\n"
+        f"# Endpoint: {endpoint}\n"
+        "validate_input(request.values)\n"
+        "enforce_output_encoding()\n"
+    )
+
+
 def _resolve_report_file(source: str, item_id: str, fmt: str) -> Path | None:
     if fmt not in {"json", "xml"}:
         return None
@@ -394,17 +472,51 @@ def scan_result(source: str, item_id: str):
     for finding in findings:
         row = dict(finding)
         row["remediation_precise"] = _precise_remediation(finding)
+        row["exact_fix_snippet"] = _exact_fix_snippet(finding)
         enriched_findings.append(row)
+
+    total_findings = len(enriched_findings)
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    try:
+        page_size = int(request.args.get("page_size", "25"))
+    except ValueError:
+        page_size = 25
+
+    page = max(1, page)
+    page_size = max(10, min(page_size, 100))
+    total_pages = max(1, (total_findings + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+
+    start_idx = (page - 1) * page_size
+    end_idx = min(start_idx + page_size, total_findings)
+    paged_findings = enriched_findings[start_idx:end_idx]
 
     summary = _summarize_severity(findings)
     vulnerability_types = _count_vulnerability_types(findings)
     return render_template(
         "lab/scan_result.html",
         source=source,
+        result_item_id=item_id,
         scan_label=scan_label,
         target_url=target_url,
         summary=summary,
-        findings=enriched_findings,
+        findings=paged_findings,
+        findings_total=total_findings,
+        pagination={
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "start": (start_idx + 1) if total_findings > 0 else 0,
+            "end": end_idx,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_page": page - 1,
+            "next_page": page + 1,
+        },
         vulnerability_types=vulnerability_types,
         report_links=report_links,
     )

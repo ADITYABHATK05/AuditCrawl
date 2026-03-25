@@ -64,6 +64,16 @@
 
 <section class="panel">
   <h2>Findings</h2>
+  <p class="note">Showing {{ pagination.start }}-{{ pagination.end }} of {{ findings_total }} findings.</p>
+  <div class="report-links" style="margin-top: 8px;">
+    {% if pagination.has_prev %}
+    <a class="btn btn-subtle" href="{{ url_for('scan_result', source=source, item_id=result_item_id, page=pagination.prev_page, page_size=pagination.page_size) }}">Previous</a>
+    {% endif %}
+    {% if pagination.has_next %}
+    <a class="btn btn-subtle" href="{{ url_for('scan_result', source=source, item_id=result_item_id, page=pagination.next_page, page_size=pagination.page_size) }}">Next</a>
+    {% endif %}
+    <span class="note">Page {{ pagination.page }} / {{ pagination.total_pages }}</span>
+  </div>
   <div class="table-wrap results-wrap">
     <table class="results-table">
       <thead>
@@ -80,7 +90,7 @@
         <tr>
           <td>{{ f.vulnerability_type }}</td>
           <td>{{ f.severity }}</td>
-          <td class="cell-wrap"><code>{{ f.endpoint }}</code></td>
+          <td class="cell-wrap endpoint-cell"><code class="endpoint-code">{{ f.endpoint }}</code></td>
           <td class="cell-wrap">
             <details>
               <summary>View evidence</summary>
@@ -88,8 +98,16 @@
             </details>
           </td>
           <td>
-            <p class="note" style="margin: 0 0 8px 0; color: #dce1e8;">{{ f.remediation_precise }}</p>
-            {% if f.fix_snippet %}
+            <details>
+              <summary>Why this is risky</summary>
+              <p class="note" style="margin: 6px 0 0 0; color: #dce1e8;">{{ f.remediation_precise }}</p>
+            </details>
+            {% if f.exact_fix_snippet %}
+            <details>
+              <summary>Exact code fix</summary>
+              <pre>{{ f.exact_fix_snippet }}</pre>
+            </details>
+            {% elif f.fix_snippet %}
             <details>
               <summary>Reference code fix</summary>
               <pre>{{ f.fix_snippet }}</pre>
