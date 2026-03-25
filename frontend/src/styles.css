@@ -1,0 +1,120 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  background: #0e1318;
+  color: #e6edf3;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.sub { color: #9fb0c4; }
+
+.card {
+  margin-top: 14px;
+  border: 1px solid #263042;
+  background: #141b24;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.form label { display: block; margin: 8px 0 4px; }
+
+input {
+  width: 100%;
+  background: #0f151d;
+  color: #e6edf3;
+  border: 1px solid #35445f;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.levels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.level {
+  border: 1px solid #35445f;
+  background: #101820;
+  color: #bdd7f7;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.level.active {
+  border-color: #6cf2cc;
+  color: #b8ffe9;
+  background: rgba(108, 242, 204, 0.12);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.check input { width: auto; }
+
+.primary {
+  margin-top: 12px;
+  border: 1px solid #6cf2cc;
+  color: #b8ffe9;
+  background: rgba(108, 242, 204, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.error {
+  margin-top: 12px;
+  border: 1px solid #ef9ca7;
+  background: rgba(239, 156, 167, 0.14);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.progress-track {
+  margin-top: 8px;
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: #0f141c;
+  border: 1px solid #2a364a;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #61e7c4, #7ac8ff);
+  transition: width 0.4s ease;
+}
+
+.downloads { display: flex; gap: 12px; margin: 8px 0 12px; }
+.downloads a { color: #9ac4ff; }
+
+.finding {
+  border-top: 1px solid #293447;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.finding h3 span {
+  font-size: 0.8rem;
+  margin-left: 8px;
+  color: #ef9ca7;
+}
+
+pre {
+  white-space: pre-wrap;
+  background: #0f141c;
+  border: 1px solid #2a364a;
+  border-radius: 8px;
+  padding: 10px;
+}

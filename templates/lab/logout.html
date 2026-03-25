@@ -1,0 +1,14 @@
+{% extends "lab/base.html" %}
+{% block title %}Logout Lab{% endblock %}
+{% block content %}
+<section class="page-head">
+  <h1>Logout Simulation</h1>
+</section>
+
+<section class="panel">
+  <p>
+    Logged out message shown. This route intentionally does not clear session to demonstrate weak logout handling.
+  </p>
+  <a class="btn" href="{{ url_for('admin') }}">Return to Admin</a>
+</section>
+{% endblock %}

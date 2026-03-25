@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AuditCrawl Lab{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='lab.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand-box" href="{{ url_for('index') }}">
+        <div class="brand-mark">&#9673;</div>
+        <div class="brand-text">AUDITCRAWL</div>
+      </a>
+
+      <div class="status-chip">SYSTEM ONLINE</div>
+
+      <nav class="side-nav">
+        <a class="{% if request.path == '/' %}active{% endif %}" href="{{ url_for('index') }}">
+          <span class="nav-ico">&#9672;</span><span>Command Center</span>
+        </a>
+        <a class="{% if request.path.startswith('/scanner') %}active{% endif %}" href="{{ url_for('scanner_ui') }}">
+          <span class="nav-ico">&#9654;</span><span>Initiate Scan</span>
+        </a>
+        <a href="{{ url_for('index') }}#scan-archive">
+          <span class="nav-ico">&#9711;</span><span>Scan Archive</span>
+        </a>
+        <a class="{% if request.path in ['/xss', '/guestbook', '/sqli', '/ssrf'] %}active{% endif %}" href="{{ url_for('xss') }}?q=hello">
+          <span class="nav-ico">&#9883;</span><span>Exploit Labs</span>
+        </a>
+        <a class="{% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin') }}">
+          <span class="nav-ico">&#9881;</span><span>System Config</span>
+        </a>
+      </nav>
+      <div class="sidebar-foot">Authorized educational testing only</div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div>
+          <h1>AuditCrawl</h1>
+          <p>Security Dashboard</p>
+        </div>
+        <div class="clock-panel">
+          <span class="clock-dot">&#9716;</span>
+          <span>{{ now or '' }}</span>
+          <a class="btn btn-subtle" href="{{ request.full_path if request.query_string else request.path }}">Refresh</a>
+        </div>
+      </header>
+
+      <section class="disclaimer">
+        Educational lab app for authorized security testing only. No destructive scanning.
+      </section>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

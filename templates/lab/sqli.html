@@ -1,0 +1,27 @@
+{% extends "lab/base.html" %}
+{% block title %}SQLi Lab{% endblock %}
+{% block content %}
+<section class="page-head">
+  <h1>SQL Injection Demonstration</h1>
+  <p>Query is intentionally built with string formatting for scanner symptom detection.</p>
+</section>
+
+<section class="panel">
+  <form method="GET" action="{{ url_for('sqli') }}" class="form-row">
+    <label for="id">User ID</label>
+    <input id="id" name="id" value="{{ request.args.get('id', '1') }}" placeholder="Try 1">
+    <button type="submit">Lookup User</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Executed Query</h2>
+  <pre>{{ query }}</pre>
+  <h2>Result</h2>
+  {% if is_error %}
+  <div class="status error">SQL error: {{ result }}</div>
+  {% else %}
+  <pre>{{ result }}</pre>
+  {% endif %}
+</section>
+{% endblock %}

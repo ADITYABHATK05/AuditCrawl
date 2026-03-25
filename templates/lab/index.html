@@ -1,0 +1,46 @@
+{% extends "lab/base.html" %}
+{% block title %}AuditCrawl Lab Dashboard{% endblock %}
+{% block content %}
+
+<section class="panel" id="scan-archive">
+  <div class="panel-head">
+    <h2>Recent Scans</h2>
+    <a class="btn" href="{{ url_for('scanner_ui') }}">Initiate Scan</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Scan #</th>
+          <th>Target URL</th>
+          <th>Status</th>
+          <th>Vulnerabilities</th>
+          <th>Critical</th>
+          <th>High</th>
+          <th>Started</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for scan in scan_archive %}
+        <tr>
+          <td title="{{ scan.scan_id }}">{{ scan.sequence }}</td>
+          <td title="{{ scan.target_url }}">{{ scan.target_url }}</td>
+          <td><span class="status-pill">{{ scan.status }}</span></td>
+          <td>{{ scan.vulnerabilities }}</td>
+          <td class="text-pink">{{ scan.critical }}</td>
+          <td class="text-pink">{{ scan.high }}</td>
+          <td>{{ scan.started }}</td>
+          <td><a class="report-link" href="{{ scan.report_href }}" target="_blank" rel="noopener">View Results</a></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8">No scans yet. Click Initiate Scan to run your first safe scan.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "lab/base.html" %}
+{% block title %}Report Viewer{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>{{ report_type }} Report Viewer</h2>
+  <p><strong>Source:</strong> {{ source|upper }} | <strong>Run:</strong> {{ run_label }}</p>
+  <div class="report-links" style="margin-top: 10px;">
+    <a class="btn btn-subtle" href="{{ raw_open }}" target="_blank" rel="noopener">Open Raw {{ report_type }}</a>
+    <a class="btn btn-subtle" href="{{ download }}" rel="noopener">Download {{ report_type }}</a>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Formatted {{ report_type }}</h2>
+  <div class="report-code-wrap">
+    <ol class="report-lines">
+      {% for line in lines %}
+      <li><code>{{ line }}</code></li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+{% endblock %}

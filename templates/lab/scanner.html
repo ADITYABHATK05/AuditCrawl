@@ -1,0 +1,207 @@
+{% extends "lab/base.html" %}
+{% block title %}One-Click Scanner{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Start New Scan</h2>
+  <form class="form-row scanner-form" id="scan-form">
+    <label for="target_url">Target URL</label>
+    <input id="target_url" name="target_url" value="{{ defaults.target_url }}" placeholder="https://example.com" required>
+
+    <fieldset class="scan-level-group">
+      <legend>Scan Level</legend>
+      <label class="level-pill">
+        <input type="radio" name="scan_level" value="1" {% if defaults.scan_level == '1' %}checked{% endif %}>
+        <span>Level 1 - Shallow</span>
+      </label>
+      <label class="level-pill">
+        <input type="radio" name="scan_level" value="2" {% if defaults.scan_level == '2' %}checked{% endif %}>
+        <span>Level 2 - Medium</span>
+      </label>
+      <label class="level-pill">
+        <input type="radio" name="scan_level" value="3" {% if defaults.scan_level == '3' %}checked{% endif %}>
+        <span>Level 3 - Deep</span>
+      </label>
+    </fieldset>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="allow_subdomains" {% if defaults.allow_subdomains %}checked{% endif %}>
+      Allow subdomain crawling
+    </label>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="has_permission" {% if defaults.has_permission %}checked{% endif %}>
+      I confirm this target is owned by me or I have explicit written authorization.
+    </label>
+
+    <div class="action-row">
+      <button type="button" id="start-scan-btn">Start Safe Scan</button>
+      <button type="button" id="stop-scan-btn" disabled>Stop Scan</button>
+    </div>
+  </form>
+  {% if error %}<p class="status error">{{ error }}</p>{% endif %}
+
+  <div id="scan-live" class="live-status" style="display:none; margin-top:16px;">
+    <p id="scan-live-message">Initializing...</p>
+    <div style="height:12px; background:#1e2430; border-radius:999px; overflow:hidden; border:1px solid #2f3a4d;">
+      <div id="scan-live-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#00d2ff,#3a7bd5);"></div>
+    </div>
+    <p id="scan-live-percent" style="margin-top:8px;">0%</p>
+    <p id="scan-live-link" style="margin-top:8px;"></p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Recent Scan Archive</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Scan #</th>
+          <th>Target URL</th>
+          <th>Status</th>
+          <th>Vulnerabilities</th>
+          <th>Critical</th>
+          <th>High</th>
+          <th>Started</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for scan in scan_archive %}
+        <tr>
+          <td title="{{ scan.scan_id }}">{{ scan.sequence }}</td>
+          <td title="{{ scan.target_url }}">{{ scan.target_url }}</td>
+          <td><span class="status-pill">{{ scan.status }}</span></td>
+          <td>{{ scan.vulnerabilities }}</td>
+          <td class="text-pink">{{ scan.critical }}</td>
+          <td class="text-pink">{{ scan.high }}</td>
+          <td>{{ scan.started }}</td>
+          <td><a class="report-link" href="{{ scan.report_href }}" target="_blank" rel="noopener">View Results</a></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8">No historical scans yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+(() => {
+  const startBtn = document.getElementById('start-scan-btn');
+  const stopBtn = document.getElementById('stop-scan-btn');
+  const form = document.getElementById('scan-form');
+  const liveWrap = document.getElementById('scan-live');
+  const liveMsg = document.getElementById('scan-live-message');
+  const liveBar = document.getElementById('scan-live-bar');
+  const livePercent = document.getElementById('scan-live-percent');
+  const liveLink = document.getElementById('scan-live-link');
+  let activeJobId = null;
+  let pollTimer = null;
+
+  function renderProgress(progress, message) {
+    const pct = Math.max(0, Math.min(100, Number(progress || 0)));
+    liveWrap.style.display = 'block';
+    liveBar.style.width = pct + '%';
+    livePercent.textContent = pct + '%';
+    liveMsg.textContent = message || 'Scanning...';
+  }
+
+  async function pollStatus() {
+    if (!activeJobId) return;
+    try {
+      const res = await fetch(`/scanner/status/${activeJobId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        renderProgress(0, data.error || 'Unable to fetch status');
+        return;
+      }
+
+      renderProgress(data.progress, data.message);
+
+      if (data.status === 'completed') {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        activeJobId = null;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        const runId = data.run_id || (data.result && data.result.run_id);
+        if (runId) {
+          liveLink.innerHTML = `<a class="report-link" href="/scan-result/backend/${runId}" target="_blank" rel="noopener">View Results</a>`;
+        }
+        setTimeout(() => window.location.reload(), 1200);
+      }
+
+      if (data.status === 'failed' || data.status === 'cancelled') {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        activeJobId = null;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    } catch (err) {
+      renderProgress(0, 'Network error while polling status');
+    }
+  }
+
+  startBtn.addEventListener('click', async () => {
+    const formData = new FormData(form);
+    const payload = {
+      target_url: (formData.get('target_url') || '').toString().trim(),
+      scan_level: (formData.get('scan_level') || '2').toString(),
+      has_permission: formData.get('has_permission') === 'on'
+    };
+
+    liveLink.textContent = '';
+    renderProgress(0, 'Submitting scan...');
+
+    try {
+      const res = await fetch('/scanner/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        renderProgress(0, data.error || 'Unable to start scan');
+        return;
+      }
+
+      activeJobId = data.job_id;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      renderProgress(data.progress || 0, data.message || 'Queued');
+
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollStatus, 1000);
+      pollStatus();
+    } catch (err) {
+      renderProgress(0, 'Failed to initiate scan');
+    }
+  });
+
+  stopBtn.addEventListener('click', async () => {
+    if (!activeJobId) return;
+    try {
+      const res = await fetch(`/scanner/stop/${activeJobId}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        renderProgress(0, data.error || 'Unable to stop scan');
+        return;
+      }
+      renderProgress(data.progress || 100, data.message || 'Scan cancelled');
+      clearInterval(pollTimer);
+      pollTimer = null;
+      activeJobId = null;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      renderProgress(0, 'Failed to stop scan');
+    }
+  });
+})();
+</script>
+{% endblock %}
