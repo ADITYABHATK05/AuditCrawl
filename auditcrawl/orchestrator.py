@@ -1,60 +1,137 @@
 from __future__ import annotations
-
-from dataclasses import dataclass
+import logging
+import time
+import json
+import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from .audit_logger import AuditLogger
 from .config import ScanConfig
-from .crawler import WebCrawler
-from .models import Endpoint, Finding
-from .poc import SafePoCGenerator
-from .report import ReportGenerator
-from .scanners import AuthScanner, RCEPatternScanner, SQLiScanner, SSRFScanner, XSSScanner
+from .http_client import HttpClient
+from .crawler import Crawler
+from .models import Endpoint, Finding, ScanResult
+from .modules import xss, sqli, ssrf, idor, csrf, headers, open_redirect, auth, rce
+from .reporter import Reporter
 
-
-@dataclass
-class ScanResult:
-    endpoints: List[Endpoint]
-    findings: List[Finding]
-    findings_json_path: str
-    report_html_path: str
-    report_markdown_path: str
+logger = logging.getLogger("auditcrawl.orchestrator")
 
 
 class Scanner:
     def __init__(self, config: ScanConfig) -> None:
-        config.validate()
         self.config = config
-        self.logger = AuditLogger(output_dir=self.config.output_dir, use_sqlite=False)
-        self.crawler = WebCrawler(self.config)
+        self.client = HttpClient(config)
+        self._progress_callback = None  # optional callable(stage, message, pct)
+
+    def set_progress_callback(self, cb):
+        """Register a callback(stage, message, percent) for live UI updates."""
+        self._progress_callback = cb
+
+    def _emit(self, stage: str, message: str, pct: int = 0) -> None:
+        logger.info("[%s] %s", stage, message)
+        if self._progress_callback:
+            self._progress_callback(stage, message, pct)
 
     def run(self) -> ScanResult:
-        endpoints = self.crawler.crawl()
+        cfg = self.config
+        result = ScanResult()
+        start = time.monotonic()
+
+        os.makedirs(cfg.output_dir, exist_ok=True)
+        _setup_logging(cfg.output_dir)
+
+        # Login if configured
+        if cfg.auth_login_url and cfg.auth_username:
+            self._emit("auth", "Performing login...", 2)
+            self.client.login()
+
+        # Crawl
+        self._emit("crawl", f"Starting crawl from {cfg.base_url}", 5)
+        crawler = Crawler(cfg, self.client)
+        endpoints = crawler.crawl()
+        result.endpoints = endpoints
+        self._emit("crawl", f"Discovered {len(endpoints)} endpoints", 25)
+
+        # De-duplicate endpoints for scanning
+        scan_targets = _deduplicate_endpoints(endpoints)
+        total = len(scan_targets)
         findings: List[Finding] = []
 
-        if self.config.enable_xss:
-            findings.extend(XSSScanner(self.config, self.logger).scan(endpoints))
-        if self.config.enable_sqli:
-            findings.extend(SQLiScanner(self.config, self.logger).scan(endpoints))
-        if self.config.enable_ssrf:
-            findings.extend(SSRFScanner(self.config, self.logger).scan(endpoints))
-        if self.config.enable_auth:
-            findings.extend(AuthScanner(self.config, self.logger).scan(endpoints))
-        if self.config.enable_rce:
-            findings.extend(RCEPatternScanner(self.config, self.logger).scan(endpoints))
+        for i, ep in enumerate(scan_targets):
+            pct = 25 + int(70 * i / max(total, 1))
+            self._emit("scan", f"[{i+1}/{total}] Scanning {ep.url}", pct)
 
-        poc_data = SafePoCGenerator().generate(findings)
-        templates_dir = str(Path(__file__).resolve().parent.parent / "templates")
-        reporter = ReportGenerator(output_dir=self.config.output_dir, templates_dir=templates_dir)
-        findings_json = reporter.generate_json(findings, poc_data)
-        report_html = reporter.generate_html(findings, poc_data)
-        report_markdown = reporter.generate_markdown(findings, poc_data)
+            if cfg.enable_xss:
+                findings += _safe_run(xss.scan, ep, self.client, cfg.lab_mode, "xss")
+            if cfg.enable_sqli:
+                findings += _safe_run(sqli.scan, ep, self.client, cfg.lab_mode, "sqli")
+            if cfg.enable_ssrf:
+                findings += _safe_run(ssrf.scan, ep, self.client, cfg.lab_mode, "ssrf")
+            if cfg.enable_idor:
+                findings += _safe_run(idor.scan, ep, self.client, cfg.lab_mode, "idor")
+            if cfg.enable_csrf:
+                findings += _safe_run(csrf.scan, ep, self.client, cfg.lab_mode, "csrf")
+            if cfg.enable_headers:
+                findings += _safe_run(headers.scan, ep, self.client, cfg.lab_mode, "headers")
+            if cfg.enable_open_redirect:
+                findings += _safe_run(open_redirect.scan, ep, self.client, cfg.lab_mode, "open_redirect")
+            if cfg.enable_auth:
+                findings += _safe_run(auth.scan, ep, self.client, cfg.lab_mode, "auth")
+            if cfg.enable_rce:
+                findings += _safe_run(rce.scan, ep, self.client, cfg.lab_mode, "rce")
 
-        return ScanResult(
-            endpoints=endpoints,
-            findings=findings,
-            findings_json_path=str(findings_json),
-            report_html_path=str(report_html),
-            report_markdown_path=str(report_markdown),
-        )
+        result.findings = _deduplicate_findings(findings)
+        result.duration_seconds = time.monotonic() - start
+
+        # Report
+        self._emit("report", "Generating reports...", 96)
+        reporter = Reporter(cfg, result)
+        result.findings_json_path = reporter.write_json()
+        result.report_html_path = reporter.write_html()
+        result.report_markdown_path = reporter.write_markdown()
+        result.scan_log_path = str(Path(cfg.output_dir) / "scan.log")
+
+        self._emit("done", f"Scan complete. {len(result.findings)} findings.", 100)
+        self.client.close()
+        return result
+
+
+def _safe_run(fn, endpoint: Endpoint, client: HttpClient, lab_mode: bool, name: str) -> List[Finding]:
+    try:
+        return fn(endpoint, client, lab_mode)
+    except Exception as exc:
+        logger.warning("Module %s failed on %s: %s", name, endpoint.url, exc)
+        return []
+
+
+def _deduplicate_endpoints(endpoints: List[Endpoint]) -> List[Endpoint]:
+    seen = set()
+    result = []
+    for ep in endpoints:
+        key = (ep.url.split("?")[0], ep.method)
+        if key not in seen:
+            seen.add(key)
+            result.append(ep)
+    return result
+
+
+def _deduplicate_findings(findings: List[Finding]) -> List[Finding]:
+    seen = set()
+    result = []
+    for f in findings:
+        key = (f.vuln_type, f.url, f.parameter, f.payload[:50])
+        if key not in seen:
+            seen.add(key)
+            result.append(f)
+    # Sort: critical first
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    result.sort(key=lambda f: severity_order.get(f.severity.value, 5))
+    return result
+
+
+def _setup_logging(output_dir: str) -> None:
+    log_path = Path(output_dir) / "scan.log"
+    fh = logging.FileHandler(log_path, mode="w")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    logging.getLogger("auditcrawl").addHandler(fh)
+    logging.getLogger("auditcrawl").setLevel(logging.DEBUG)

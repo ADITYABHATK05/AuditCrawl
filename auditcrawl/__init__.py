@@ -1,3 +1,5 @@
-"""AuditCrawl package."""
+from .modules import idor
 
-__version__ = "0.1.0"
+from . import xss, sqli, ssrf, csrf, headers, open_redirect, auth, rce
+
+__all__ = ["xss", "sqli", "ssrf", "idor", "csrf", "headers", "open_redirect", "auth", "rce"]
