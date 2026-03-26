@@ -111,8 +111,7 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
         findings_count=len(findings_payload),
         endpoints_count=unique_endpoints,
         findings=[FindingOut(**x) for x in findings_payload],
-        json_path=str(Path(settings.output_dir) / f"run_{run_id}.json"),
-        xml_path=str(Path(settings.output_dir) / f"run_{run_id}.xml"),
+        pdf_path=str(Path(settings.output_dir) / f"run_{run_id}.pdf"),
     )
 
 @router.get("/scans")

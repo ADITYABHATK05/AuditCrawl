@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AuditCrawl Lab</title>
+    <style>
+      :root { color-scheme: light; --fg:#0b0f14; --muted:#5a6675; --line:#e6eaf0; --card:#ffffff; --bg:#f6f8fb; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--fg); }
+      header { padding: 24px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+      header h1 { margin: 0 0 6px; font-size: 20px; }
+      header p { margin: 0; color: var(--muted); }
+      main { max-width: 980px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+      .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+      .card h2 { margin: 0 0 8px; font-size: 15px; }
+      .card p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+      a { color: inherit; }
+      ul { margin: 0; padding-left: 18px; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+      .small { font-size: 12px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>AuditCrawl Lab</h1>
+      <p>Intentionally vulnerable pages for scanner testing. Time: {{ now }}</p>
+    </header>
+    <main>
+      <div class="grid">
+        <div class="card">
+          <h2>Reflected XSS</h2>
+          <p>Query param reflected into HTML without encoding.</p>
+          <ul>
+            <li><a href="/xss?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E">Try <code>/xss?q=&lt;script&gt;…</code></a></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>Stored XSS / CSRF</h2>
+          <p>Guestbook stores raw HTML; POST form has no CSRF token.</p>
+          <ul>
+            <li><a href="/guestbook">Open <code>/guestbook</code></a></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>SQL Injection</h2>
+          <p>Unsafe string interpolation into SQL query.</p>
+          <ul>
+            <li><a href="/sqli?id=1">Try <code>/sqli?id=1</code></a></li>
+            <li><a href="/sqli?id=1%20OR%201%3D1">Try <code>/sqli?id=1 OR 1=1</code></a></li>
+            <li><a href="/sqli?id=1%27">Try <code>/sqli?id=1'</code></a></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>SSRF surface</h2>
+          <p>URL-looking parameter to detect SSRF exposure.</p>
+          <ul>
+            <li><a href="/ssrf?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F">Try <code>/ssrf?url=…</code></a></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>Weak auth flows</h2>
+          <p>Intentionally weak login/logout/admin checks.</p>
+          <ul>
+            <li><a href="/login">Open <code>/login</code></a></li>
+            <li><a href="/admin">Open <code>/admin</code></a></li>
+            <li><a href="/logout">Open <code>/logout</code></a></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>Scanner UI (Lab)</h2>
+          <p>Optional: a basic page that forwards scans to the FastAPI backend.</p>
+          <ul>
+            <li><a href="/scanner">Open <code>/scanner</code></a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Archive</h2>
+        <p class="small">Recent scans (if any) from the FastAPI backend integration.</p>
+        <pre class="small">{{ stats | tojson }}</pre>
+      </div>
+    </main>
+  </body>
+</html>

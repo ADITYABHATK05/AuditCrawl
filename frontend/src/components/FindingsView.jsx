@@ -10,8 +10,7 @@ export default function FindingsView({ result }) {
       <p><strong>Target:</strong> {result.target_url}</p>
       <p><strong>Findings:</strong> {result.findings_count}</p>
       <div className="downloads">
-        <a href={`http://127.0.0.1:8000/output/run_${result.run_id}.json`} target="_blank" rel="noreferrer">JSON</a>
-        <a href={`http://127.0.0.1:8000/output/run_${result.run_id}.xml`} target="_blank" rel="noreferrer">XML</a>
+        <a href={`http://127.0.0.1:8000/output/run_${result.run_id}.pdf`} target="_blank" rel="noreferrer">PDF Report</a>
       </div>
 
       {result.findings.map((f, idx) => (

@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 # Import AuditCrawl scanner
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -69,7 +70,9 @@ class JobManager:
         job["status"] = "running"
         
         try:
-            print(f"\n=== Starting scan for {payload.target_url} ===")
+            print(f"\n{'='*60}")
+            print(f"SCAN INITIATED: {payload.target_url}")
+            print(f"{'='*60}\n")
             
             # Parse scan level to config
             scan_level = int(payload.scan_level)
@@ -84,7 +87,9 @@ class JobManager:
             parsed_url = urlparse(str(payload.target_url))
             domain = parsed_url.netloc or str(payload.target_url)
             
-            print(f"Domain: {domain}, Config: {config_args}")
+            print(f"✓ Parsed URL: {str(payload.target_url)}")
+            print(f"✓ Domain: {domain}")
+            print(f"✓ Scan Level: {scan_level} ({config_args})\n")
             
             # Create scanner config
             config = ScanConfig(
@@ -168,6 +173,22 @@ class JobManager:
                 
                 await session.commit()
                 job["run_id"] = scan_run.id
+
+            # Write a downloadable PDF report to backend/output for the frontend.
+            # The FastAPI app mounts settings.output_dir at /output.
+            try:
+                out_dir = Path("backend/output")
+                out_dir.mkdir(parents=True, exist_ok=True)
+                pdf_src = getattr(scan_result, "report_pdf_path", "") or ""
+                pdf_dst = out_dir / f"run_{job['run_id']}.pdf"
+                if pdf_src:
+                    Path(pdf_src).replace(pdf_dst)
+                else:
+                    # If scanner didn't generate a PDF for some reason, create an empty placeholder.
+                    pdf_dst.write_bytes(b"")
+            except Exception as _:
+                # Don't fail the scan completion if report export fails.
+                pass
             
             print(f"Scan {job_id} completed successfully")
             job["status"] = "completed"

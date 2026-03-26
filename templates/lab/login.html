@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lab - Login</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+      .muted { color: #556; }
+      .box { padding: 12px; border: 1px solid #ddd; border-radius: 8px; max-width: 520px; }
+      label { display: block; margin-top: 10px; }
+      input { width: 100%; padding: 8px; }
+      .err { color: #a00; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    </style>
+  </head>
+  <body>
+    <h1>Login Lab</h1>
+    <p class="muted">Test creds: <code>testuser / testpass</code></p>
+    {% if error %}
+      <p class="err">{{ error }}</p>
+    {% endif %}
+    <form method="POST" action="/login" class="box">
+      <label>Username<input name="username" autocomplete="username" /></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" /></label>
+      <div style="margin-top:12px"><button type="submit">Login</button></div>
+    </form>
+    <p><a href="/">Back</a></p>
+  </body>
+</html>

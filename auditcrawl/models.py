@@ -78,9 +78,9 @@ class Finding:
 class ScanResult:
     endpoints: List[Endpoint] = field(default_factory=list)
     findings: List[Finding] = field(default_factory=list)
-    findings_json_path: str = ""
     report_html_path: str = ""
     report_markdown_path: str = ""
+    report_pdf_path: str = ""
     scan_log_path: str = ""
     duration_seconds: float = 0.0
     errors: List[str] = field(default_factory=list)

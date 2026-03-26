@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lab - XSS</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .muted { color: #556; }
+      .box { padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Reflected XSS Lab</h1>
+    <p class="muted">Educational only. The output below is intentionally unsafe.</p>
+
+    <form method="GET" action="/xss" class="box">
+      <label>
+        q:
+        <input name="q" value="{{ q }}" style="width: min(720px, 90vw)" />
+      </label>
+      <button type="submit">Render</button>
+      <p class="muted">Try: <code>&lt;script&gt;alert("AUDITCRAWL_XSS")&lt;/script&gt;</code></p>
+    </form>
+
+    <h2>Rendered output</h2>
+    <div class="box">
+      {{ q | safe }}
+    </div>
+
+    <p><a href="/">Back</a></p>
+  </body>
+</html>

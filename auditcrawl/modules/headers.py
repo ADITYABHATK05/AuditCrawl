@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 import re
 from typing import List
+from urllib.parse import urlparse
+import ipaddress
 
 from ..http_client import HttpClient
 from ..models import Endpoint, Finding, Severity
@@ -186,6 +188,24 @@ def _check_csp_quality(url: str, headers: dict) -> List[Finding]:
 
 
 def _check_server_disclosure(url: str, headers: dict) -> List[Finding]:
+    # For localhost/private lab targets, "Server" disclosure is usually just the dev server
+    # (Werkzeug/uvicorn/etc.) and is not a meaningful vulnerability signal. Keep this check
+    # for real external targets.
+    try:
+        host = (urlparse(url).hostname or "").lower()
+        if host in {"localhost", "127.0.0.1"}:
+            return []
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback:
+                return []
+        except ValueError:
+            # not an IP literal
+            pass
+    except Exception:
+        # If parsing fails, fall back to reporting normally.
+        pass
+
     findings = []
     for hdr in ("server", "x-powered-by", "x-aspnet-version", "x-aspnetmvc-version"):
         val = headers.get(hdr, "")

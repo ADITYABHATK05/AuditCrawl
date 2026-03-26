@@ -32,8 +32,7 @@ class ScanResponse(BaseModel):
     findings_count: int
     endpoints_count: int = 0
     findings: list[FindingOut]
-    json_path: str
-    xml_path: str
+    pdf_path: str
 
 
 class ScanEnqueueResponse(BaseModel):

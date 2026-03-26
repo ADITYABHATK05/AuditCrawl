@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lab - Report View</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+      .muted { color: #556; }
+      pre { padding: 12px; border: 1px solid #ddd; border-radius: 8px; overflow: auto; }
+      code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+      a { color: inherit; }
+      .pill { padding: 6px 10px; border: 1px solid #ddd; border-radius: 999px; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <h1>Report View</h1>
+    <p class="muted">Run: {{ run_label }} | Source: {{ source }} | Type: {{ report_type }}</p>
+
+    <div class="row">
+      {% if raw_open %}<a class="pill" href="{{ raw_open }}">Open raw</a>{% endif %}
+      {% if download %}<a class="pill" href="{{ download }}">Download</a>{% endif %}
+      <a class="pill" href="/">Back</a>
+    </div>
+
+    <pre>{% for line in lines %}{{ line }}
+{% endfor %}</pre>
+  </body>
+</html>

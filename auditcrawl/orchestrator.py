@@ -85,13 +85,15 @@ class Scanner:
         # Report
         self._emit("report", "Generating reports...", 96)
         reporter = Reporter(cfg, result)
-        result.findings_json_path = reporter.write_json()
-        result.report_html_path = reporter.write_html()
-        result.report_markdown_path = reporter.write_markdown()
+        # Only generate the PDF report for users to download.
+        result.report_pdf_path = reporter.write_pdf()
         result.scan_log_path = str(Path(cfg.output_dir) / "scan.log")
 
         self._emit("done", f"Scan complete. {len(result.findings)} findings.", 100)
-        self.client.close()
+        # Be tolerant if an older/alternate HttpClient implementation is used.
+        close_fn = getattr(self.client, "close", None)
+        if callable(close_fn):
+            close_fn()
         return result
 
 

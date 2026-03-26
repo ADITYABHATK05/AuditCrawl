@@ -8,5 +8,8 @@ urllib3>=2.2.0
 flask>=3.0.0
 flask-cors>=4.0.0
 
+# PDF report generation
+reportlab>=4.2.0
+
 # Existing project deps (add yours here if different)
 # sqlalchemy>=2.0.0   # optional SQLite extension

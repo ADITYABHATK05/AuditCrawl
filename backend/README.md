@@ -19,8 +19,7 @@ uvicorn app.main:app --reload --port 8000
 ## API
 - `POST /api/scan`
 - `GET /api/scan/{run_id}`
-- `GET /output/run_{id}.json`
-- `GET /output/run_{id}.xml`
+- `GET /output/run_{id}.pdf`
 
 ## Sample Request
 ```json

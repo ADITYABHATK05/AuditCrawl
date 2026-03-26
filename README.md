@@ -25,7 +25,7 @@ All generated PoCs include this notice:
   - RCE surface pattern checks (no command execution)
 - Audit trail logging (`scan.log`, optional SQLite extension point)
 - Report outputs:
-  - `findings.json`
+  - `report.pdf`
   - `report.html`
   - `report.md`
 
@@ -59,7 +59,7 @@ python main.py --base-url http://localhost:5000 --target-domain localhost --xss 
 ## Output
 
 - Console summary
-- `output/findings.json`
+- `output/report.pdf`
 - `output/report.html`
 - `output/report.md`
 - `output/scan.log`

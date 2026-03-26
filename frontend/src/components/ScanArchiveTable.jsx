@@ -1,23 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getAllScans } from '../api';
 
 export default function ScanArchiveTable({ limit }) {
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/scans')
-      .then(res => res.json())
+    getAllScans()
       .then(data => {
         // Sort newest first
         const sortedData = data.sort((a, b) => b.id - a.id);
         setScans(limit ? sortedData.slice(0, limit) : sortedData);
-        setLoading(false);
       })
       .catch(err => {
         console.error("Failed to fetch scans", err);
-        setLoading(false);
-      });
+      })
+      .finally(() => setLoading(false));
   }, [limit]);
 
   if (loading) return <div style={{ padding: '1rem', color: 'var(--muted)' }}>Loading archive...</div>;

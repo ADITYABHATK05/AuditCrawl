@@ -11,7 +11,7 @@ from auditcrawl.orchestrator import Scanner
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="auditcrawl",
-        description="AuditCrawl — educational web application security scanner.",
+        description="AuditCrawl - educational web application security scanner.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -108,7 +108,7 @@ def main() -> int:
     )
 
     print("=" * 60)
-    print("  AuditCrawl — Educational Web Security Scanner")
+    print("  AuditCrawl - Educational Web Security Scanner")
     print("=" * 60)
     print(f"  Target   : {config.base_url}")
     print(f"  Domain   : {config.target_domain}")
@@ -143,12 +143,11 @@ def main() -> int:
     print(f"    Info    : {sev['info']}")
     print(f"  Duration  : {result.duration_seconds:.1f}s")
     print()
-    print(f"  JSON    → {result.findings_json_path}")
-    print(f"  HTML    → {result.report_html_path}")
-    print(f"  Markdown→ {result.report_markdown_path}")
-    print(f"  Log     → {result.scan_log_path}")
+    # Use ASCII-only arrows for Windows consoles with limited encodings.
+    print(f"  PDF      -> {result.report_pdf_path}")
+    print(f"  Log      -> {result.scan_log_path}")
     print("=" * 60)
-    print("  Educational use only — PoCs require explicit permission.")
+    print("  Educational use only - PoCs require explicit permission.")
     print("=" * 60)
 
     return 0

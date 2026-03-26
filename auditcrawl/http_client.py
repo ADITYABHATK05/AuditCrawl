@@ -30,7 +30,15 @@ class HttpClient:
             "Accept": "text/html,application/xhtml+xml,application/json,*/*",
             "Accept-Language": "en-US,en;q=0.9",
         })
-        retry = Retry(total=2, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+        # Important: do not raise on HTTP 500 responses. For scanners, an application error page
+        # can still contain useful evidence (stack traces, debug info, headers, etc.).
+        # We retry on a subset of transient server errors but keep the final response.
+        retry = Retry(
+            total=2,
+            backoff_factor=0.3,
+            status_forcelist=[502, 503, 504],
+            raise_on_status=False,
+        )
         adapter = HTTPAdapter(max_retries=retry)
         s.mount("http://", adapter)
         s.mount("https://", adapter)
@@ -85,12 +93,63 @@ class HttpClient:
         return False
 
     def is_in_scope(self, url: str) -> bool:
+        """
+        Decide whether a URL is within scan scope.
+
+        Important: callers often provide `target_domain` without a port (e.g. "127.0.0.1"),
+        while URLs may include one (e.g. "127.0.0.1:5000"). We therefore match primarily
+        on hostname, and only enforce port equality when the configured target includes a port.
+        """
         parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        target = self.config.target_domain.lower()
-        if self.config.allowed_subdomains:
-            return domain == target or domain.endswith("." + target)
-        return domain == target or domain == "www." + target
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+
+        target_raw = (self.config.target_domain or "").strip().lower()
+        target_host, target_port = _parse_target_host_port(target_raw)
+
+        if not host or not target_host:
+            return False
+
+        def host_matches(h: str) -> bool:
+            if self.config.allowed_subdomains:
+                return h == target_host or h.endswith("." + target_host)
+            return h == target_host or h == "www." + target_host
+
+        if not host_matches(host):
+            return False
+
+        # If user specified a port in target_domain, enforce it; otherwise ignore ports.
+        if target_port is not None:
+            return port == target_port
+        return True
+
+
+def _parse_target_host_port(target: str) -> tuple[str, int | None]:
+    """
+    Parse config.target_domain into (host, port?).
+
+    Accepts:
+    - "localhost"
+    - "localhost:5000"
+    - "http://localhost:5000" (some callers accidentally pass full URLs)
+    """
+    if not target:
+        return "", None
+
+    # If a full URL was provided, use urlparse.
+    if "://" in target:
+        p = urlparse(target)
+        return (p.hostname or "").lower(), p.port
+
+    # Handle simple host[:port] (IPv4/hostname). (IPv6 not supported by this split.)
+    if ":" in target and target.count(":") == 1:
+        h, p = target.split(":", 1)
+        try:
+            return h.lower(), int(p)
+        except ValueError:
+            return target.lower(), None
+
+    return target.lower(), None
 
     def close(self) -> None:
         self._session.close()

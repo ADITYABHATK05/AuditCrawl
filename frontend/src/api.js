@@ -1,4 +1,7 @@
-const API_BASE = "http://localhost:8001/api";
+// Single source of truth for the backend API base URL.
+// If you run the FastAPI backend on a different port, set:
+//   VITE_API_BASE=http://127.0.0.1:8000/api
+const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
 
 export async function flaskStartScan(payload) {
   const res = await fetch(`${API_BASE}/scan`, {

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lab - SQLi</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+      .muted { color: #556; }
+      .box { padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
+      code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      pre { white-space: pre-wrap; word-break: break-word; }
+    </style>
+  </head>
+  <body>
+    <h1>SQL Injection Lab</h1>
+    <p class="muted">Educational only. The backend builds SQL unsafely on purpose.</p>
+
+    <form method="GET" action="/sqli" class="box">
+      <label>
+        id:
+        <input name="id" value="{{ request.args.get('id','1') }}" />
+      </label>
+      <button type="submit">Run</button>
+      <p class="muted">Try: <code>1 OR 1=1</code> or <code>1'</code></p>
+    </form>
+
+    <h2>Query</h2>
+    <pre class="box">{{ query }}</pre>
+
+    <h2>Result</h2>
+    <div class="box">
+      {% if is_error %}
+        <div style="color:#a00">Error:</div>
+        <pre>{{ result }}</pre>
+      {% else %}
+        <pre>{{ result }}</pre>
+      {% endif %}
+    </div>
+
+    <p><a href="/">Back</a></p>
+  </body>
+</html>
