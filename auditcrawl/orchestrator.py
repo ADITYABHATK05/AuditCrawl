@@ -107,7 +107,9 @@ def _deduplicate_endpoints(endpoints: List[Endpoint]) -> List[Endpoint]:
     seen = set()
     result = []
     for ep in endpoints:
-        key = (ep.url.split("?")[0], ep.method)
+        # FIX: Include parameter keys in deduplication so endpoints with different params are scanned
+        param_keys = tuple(sorted(ep.params.keys()))
+        key = (ep.url.split("?")[0], ep.method, param_keys)
         if key not in seen:
             seen.add(key)
             result.append(ep)
@@ -118,13 +120,17 @@ def _deduplicate_findings(findings: List[Finding]) -> List[Finding]:
     seen = set()
     result = []
     for f in findings:
-        key = (f.vuln_type, f.url, f.parameter, f.payload[:50])
+        # FIX: Ensure payload is converted to string to avoid slicing errors on None
+        safe_payload = str(f.payload)[:50] if f.payload else ""
+        key = (f.vuln_type, f.url, f.parameter, safe_payload)
         if key not in seen:
             seen.add(key)
             result.append(f)
+            
     # Sort: critical first
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-    result.sort(key=lambda f: severity_order.get(f.severity.value, 5))
+    # FIX: Handle cases where f.severity might be a raw string instead of the Enum object
+    result.sort(key=lambda f: severity_order.get(getattr(f.severity, "value", str(f.severity)), 5))
     return result
 
 

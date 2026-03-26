@@ -55,9 +55,11 @@ class Finding:
     poc: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
+        # FIX: Ensure safe extraction of severity value
+        sev_val = getattr(self.severity, "value", str(self.severity))
         return {
             "vuln_type": self.vuln_type,
-            "severity": self.severity.value,
+            "severity": sev_val,
             "url": self.url,
             "method": self.method,
             "parameter": self.parameter,
@@ -86,5 +88,7 @@ class ScanResult:
     def summary_by_severity(self) -> Dict[str, int]:
         counts: Dict[str, int] = {s.value: 0 for s in Severity}
         for f in self.findings:
-            counts[f.severity.value] += 1
+            # FIX: Safely retrieve the enum value to prevent AttributeErrors
+            sev_val = getattr(f.severity, "value", str(f.severity))
+            counts[sev_val] = counts.get(sev_val, 0) + 1
         return counts
