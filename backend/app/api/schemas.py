@@ -11,10 +11,13 @@ class ScanRequest(BaseModel):
 
 
 class FindingOut(BaseModel):
-    vulnerability_type: str
+    type: str  # vulnerability_type
     severity: str
-    endpoint: str
+    url: str  # endpoint
     evidence: str
+    param: str = ""  # parameter name if applicable
+    description: str = ""  # detailed description
+    poc: str = ""  # proof of concept
     vulnerable_snippet: str
     fix_snippet: str
 
@@ -22,8 +25,12 @@ class FindingOut(BaseModel):
 class ScanResponse(BaseModel):
     run_id: int
     target_url: str
+    base_url: str = ""  # same as target_url
+    target_domain: str = ""  # domain extracted from target_url
     scan_level: str
+    status: str = "completed"
     findings_count: int
+    endpoints_count: int = 0
     findings: list[FindingOut]
     json_path: str
     xml_path: str

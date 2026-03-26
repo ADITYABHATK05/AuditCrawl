@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = "http://localhost:8001/api";
 
 export async function flaskStartScan(payload) {
   const res = await fetch(`${API_BASE}/scan`, {
@@ -35,6 +35,14 @@ export async function getScanResults(runId) {
   const res = await fetch(`${API_BASE}/scan/${runId}`);
   if (!res.ok) {
     throw new Error("Failed to fetch scan results");
+  }
+  return res.json();
+}
+
+export async function getAllScans() {
+  const res = await fetch(`${API_BASE}/scans`);
+  if (!res.ok) {
+    throw new Error("Failed to fetch scans");
   }
   return res.json();
 }

@@ -1,4 +1,12 @@
-export default function Header({ view, setView, scanCount }) {
+import { useNavigate, useLocation } from 'react-router-dom'
+
+export default function Header({ scanCount }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  
+  const isScanner = location.pathname === '/' || location.pathname === '/scanner'
+  const isArchive = location.pathname === '/archive'
+
   return (
     <header className="header">
       <div className="header-logo">
@@ -8,14 +16,14 @@ export default function Header({ view, setView, scanCount }) {
       </div>
       <nav className="nav">
         <button
-          className={`nav-btn ${view === "scan" ? "active" : ""}`}
-          onClick={() => setView("scan")}
+          className={`nav-btn ${isScanner ? "active" : ""}`}
+          onClick={() => navigate('/scanner')}
         >
           New Scan
         </button>
         <button
-          className={`nav-btn ${view === "history" ? "active" : ""}`}
-          onClick={() => setView("history")}
+          className={`nav-btn ${isArchive ? "active" : ""}`}
+          onClick={() => navigate('/archive')}
         >
           History {scanCount > 0 && `(${scanCount})`}
         </button>

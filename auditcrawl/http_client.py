@@ -57,10 +57,13 @@ class HttpClient:
             resp = self._session.request(method, url, **kwargs)
             return resp
         except requests.exceptions.Timeout:
+            print(f"[ERROR] Timeout: {method} {url}")
             logger.debug("Timeout: %s %s", method, url)
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as e:
+            print(f"[ERROR] ConnectionError: {method} {url} - {e}")
             logger.debug("ConnectionError: %s %s", method, url)
         except Exception as exc:
+            print(f"[ERROR] Request error {method} {url}: {exc}")
             logger.debug("Request error %s %s: %s", method, url, exc)
         return None
 

@@ -77,23 +77,39 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
 
     rows = await session.execute(select(VulnerabilityFinding).where(VulnerabilityFinding.scan_run_id == run_id))
     findings = rows.scalars().all()
+    
+    # Extract domain from target URL
+    from urllib.parse import urlparse
+    parsed = urlparse(run.target_url)
+    domain = parsed.netloc or run.target_url
+    
     findings_payload = [
         {
-            "vulnerability_type": f.vulnerability_type,
+            "type": f.vulnerability_type,
             "severity": f.severity,
-            "endpoint": f.endpoint,
+            "url": f.endpoint,
             "evidence": f.evidence,
+            "param": "",
+            "description": "",
+            "poc": "",
             "vulnerable_snippet": f.vulnerable_snippet,
             "fix_snippet": f.fix_snippet,
         }
         for f in findings
     ]
 
+    # Count unique endpoints
+    unique_endpoints = len(set(f.endpoint for f in findings))
+
     return ScanResponse(
         run_id=run.id,
         target_url=run.target_url,
+        base_url=run.target_url,
+        target_domain=domain,
         scan_level=run.scan_level,
+        status="completed",
         findings_count=len(findings_payload),
+        endpoints_count=unique_endpoints,
         findings=[FindingOut(**x) for x in findings_payload],
         json_path=str(Path(settings.output_dir) / f"run_{run_id}.json"),
         xml_path=str(Path(settings.output_dir) / f"run_{run_id}.xml"),

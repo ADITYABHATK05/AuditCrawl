@@ -560,3 +560,122 @@ input::placeholder { color: var(--muted); }
   .history-row { grid-template-columns: 1fr; }
   .stats-bar { gap: 0.75rem; }
 }
+
+/* ── SCAN FORM ── */
+.scan-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.level-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.level-pill {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.level-pill input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+  width: auto;
+}
+
+.level-pill input[type="radio"] {
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: none;
+}
+
+.level-pill:hover {
+  border-color: var(--muted);
+  background: rgba(0, 229, 160, 0.03);
+}
+
+.level-pill input[type="radio"]:checked + .level-pill-inner {
+  color: var(--accent);
+}
+
+.level-pill input[type="radio"]:checked {
+  accent-color: var(--accent);
+}
+
+.level-pill-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1;
+}
+
+.level-pill-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.level-pill-desc {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.permission-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 1rem;
+  background: rgba(0, 229, 160, 0.04);
+  border: 1px solid rgba(0, 229, 160, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.permission-check input[type="checkbox"] {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: none;
+  accent-color: var(--accent);
+}
+
+.permission-check:hover {
+  background: rgba(0, 229, 160, 0.07);
+  border-color: rgba(0, 229, 160, 0.4);
+}
+
+.permission-check span {
+  line-height: 1.5;
+}
+
+.scan-action-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.hint-text {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}

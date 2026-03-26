@@ -37,6 +37,9 @@ class Crawler:
     def crawl(self) -> List[Endpoint]:
         start_url = self.config.base_url
         queue = [(start_url, 0)]
+        
+        print(f"[DEBUG] Starting crawl from {start_url}")
+        print(f"[DEBUG] Target domain: {self.config.target_domain}")
 
         while queue and len(self.visited) < self.config.max_pages:
             url, depth = queue.pop(0)
@@ -47,6 +50,7 @@ class Crawler:
             if clean_url in self.visited:
                 continue
             if not self.client.is_in_scope(clean_url):
+                print(f"[DEBUG] Out of scope: {clean_url}")
                 continue
             if self._should_ignore(clean_url):
                 continue
@@ -55,10 +59,14 @@ class Crawler:
 
             self.visited.add(clean_url)
             logger.debug(f"Crawling [{depth}]: {clean_url}")
+            print(f"[DEBUG] Fetching: {clean_url}")
 
             resp = self.client.get(clean_url)
             if not resp:
+                print(f"[DEBUG] Failed to fetch {clean_url} - response is None")
                 continue
+            
+            print(f"[DEBUG] Got response {resp.status_code} for {clean_url}")
 
             content_type = resp.headers.get("Content-Type", "")
             
