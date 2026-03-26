@@ -1,11 +1,13 @@
 import asyncio
 import uuid
 from typing import Dict, Any
+import shutil
 from app.api.schemas import ScanRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.db.database import SessionLocal
 from app.db.models import ScanRun, VulnerabilityFinding
+from app.core.config import settings
 from urllib.parse import urlparse
 import sys
 from pathlib import Path
@@ -97,7 +99,7 @@ class JobManager:
                 target_domain=domain,
                 max_depth=config_args["max_depth"],
                 max_pages=config_args["max_pages"],
-                output_dir="backend/output",
+                output_dir=settings.output_dir,
                 safe_mode=True,
                 lab_mode=False,
                 enable_xss=True,
@@ -177,12 +179,12 @@ class JobManager:
             # Write a downloadable PDF report to backend/output for the frontend.
             # The FastAPI app mounts settings.output_dir at /output.
             try:
-                out_dir = Path("backend/output")
+                out_dir = Path(settings.output_dir)
                 out_dir.mkdir(parents=True, exist_ok=True)
                 pdf_src = getattr(scan_result, "report_pdf_path", "") or ""
                 pdf_dst = out_dir / f"run_{job['run_id']}.pdf"
-                if pdf_src:
-                    Path(pdf_src).replace(pdf_dst)
+                if pdf_src and Path(pdf_src).exists():
+                    shutil.copyfile(pdf_src, pdf_dst)
                 else:
                     # If scanner didn't generate a PDF for some reason, create an empty placeholder.
                     pdf_dst.write_bytes(b"")

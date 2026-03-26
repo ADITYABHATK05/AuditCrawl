@@ -61,14 +61,40 @@ class Reporter:
         title = ParagraphStyle(
             "TitleBig",
             parent=styles["Title"],
-            fontSize=24,
-            leading=28,
-            spaceAfter=18,
+            fontSize=26,
+            leading=30,
+            textColor=colors.HexColor("#0B1F3A"),
+            spaceAfter=20,
         )
-        h1 = ParagraphStyle("H1", parent=styles["Heading1"], spaceBefore=10, spaceAfter=8)
-        h2 = ParagraphStyle("H2", parent=styles["Heading2"], spaceBefore=10, spaceAfter=6)
-        small = ParagraphStyle("Small", parent=styles["BodyText"], fontSize=9, leading=12)
+        h1 = ParagraphStyle(
+            "H1",
+            parent=styles["Heading1"],
+            textColor=colors.HexColor("#0B1F3A"),
+            spaceBefore=10,
+            spaceAfter=8,
+        )
+        h2 = ParagraphStyle(
+            "H2",
+            parent=styles["Heading2"],
+            textColor=colors.HexColor("#1E3A5F"),
+            spaceBefore=10,
+            spaceAfter=6,
+        )
+        small = ParagraphStyle("Small", parent=styles["BodyText"], fontSize=9, leading=12, textColor=colors.HexColor("#374151"))
         mono = ParagraphStyle("Mono", parent=styles["BodyText"], fontName="Courier", fontSize=9, leading=11)
+        badge = ParagraphStyle("Badge", parent=styles["BodyText"], fontSize=8, leading=9, textColor=colors.white)
+
+        def sev_bg(severity: str):
+            s = (severity or "").lower()
+            if s == "critical":
+                return colors.HexColor("#7F1D1D")
+            if s == "high":
+                return colors.HexColor("#B91C1C")
+            if s == "medium":
+                return colors.HexColor("#B45309")
+            if s == "low":
+                return colors.HexColor("#1D4ED8")
+            return colors.HexColor("#4B5563")
 
         sev = self.result.summary_by_severity()
         findings = self.result.findings
@@ -79,10 +105,14 @@ class Reporter:
         story.append(Paragraph(datetime.utcnow().strftime("%B %d, %Y"), styles["Normal"]))
         story.append(Spacer(1, 18))
         story.append(Paragraph("Vulnerability Scan<br/>Report", title))
-        story.append(Spacer(1, 18))
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Automated security assessment for authorized testing", small))
+        story.append(Spacer(1, 16))
         story.append(Paragraph("<b>Prepared By</b><br/>AuditCrawl Security", styles["Normal"]))
         story.append(Spacer(1, 6))
-        story.append(Paragraph(f"<b>Target</b><br/>{self.config.base_url}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Target</b><br/>{sanitize_text_for_pdf(self.config.base_url)}", styles["Normal"]))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"<b>Generated At</b><br/>{self.ts}", styles["Normal"]))
         story.append(PageBreak())
 
         # Table of Contents (static)
@@ -99,7 +129,7 @@ class Reporter:
                 [
                     ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
                     ("FONTSIZE", (0, 0), (-1, -1), 11),
-                    ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.whitesmoke, colors.white]),
+                    ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#F3F4F6"), colors.white]),
                     ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.lightgrey),
                     ("PADDING", (0, 0), (-1, -1), 6),
                 ]
@@ -122,15 +152,16 @@ class Reporter:
         summary_table = Table(
             [
                 ["Critical", sev.get("critical", 0), "High", sev.get("high", 0), "Medium", sev.get("medium", 0)],
-                ["Low", sev.get("low", 0), "Info", sev.get("info", 0), "Total", len(findings), "", ""],
+                ["Low", sev.get("low", 0), "Info", sev.get("info", 0), "Total", len(findings)],
             ],
-            colWidths=[0.9 * inch, 0.6 * inch, 0.7 * inch, 0.6 * inch, 0.9 * inch, 0.6 * inch],
+            # 6.6in total width to fit within page frame and avoid overlap.
+            colWidths=[1.2 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch, 1.4 * inch],
         )
         summary_table.setStyle(
             TableStyle(
                 [
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
                     ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
                     ("FONTSIZE", (0, 0), (-1, -1), 10),
                     ("PADDING", (0, 0), (-1, -1), 6),
@@ -156,7 +187,7 @@ class Reporter:
             [
                 ["Target", "Critical", "High", "Medium", "Low", "Info"],
                 [
-                    self.config.base_url,
+                    Paragraph(sanitize_text_for_pdf(self.config.base_url), small),
                     sev.get("critical", 0),
                     sev.get("high", 0),
                     sev.get("medium", 0),
@@ -164,13 +195,14 @@ class Reporter:
                     sev.get("info", 0),
                 ],
             ],
-            colWidths=[3.7 * inch, 0.7 * inch, 0.6 * inch, 0.8 * inch, 0.6 * inch, 0.6 * inch],
+            # 6.7in total width so long URLs wrap cleanly.
+            colWidths=[3.0 * inch, 0.72 * inch, 0.72 * inch, 0.82 * inch, 0.72 * inch, 0.72 * inch],
         )
         by_target.setStyle(
             TableStyle(
                 [
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
                     ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -189,13 +221,22 @@ class Reporter:
             story.append(Paragraph("3.1 Vulnerabilities Breakdown", h2))
             breakdown_rows = [["Title", "Severity", "CVSS", "URL"]]
             for f in findings:
-                breakdown_rows.append([sanitize_text_for_pdf(f.vuln_type), f"{f.severity.value}".title(), f"{f.cvss_score:.1f}", sanitize_text_for_pdf(f.url)])
-            breakdown = Table(breakdown_rows, colWidths=[2.5 * inch, 0.9 * inch, 0.6 * inch, 3.1 * inch])
+                breakdown_rows.append(
+                    [
+                        Paragraph(sanitize_text_for_pdf(f.vuln_type), small),
+                        f"{f.severity.value}".title(),
+                        f"{f.cvss_score:.1f}",
+                        Paragraph(sanitize_text_for_pdf(f.url), small),
+                    ]
+                )
+            # 6.8in total width to avoid clipping on Letter with 0.8in margins.
+            breakdown = Table(breakdown_rows, colWidths=[2.2 * inch, 1.0 * inch, 0.6 * inch, 3.0 * inch], repeatRows=1)
             breakdown.setStyle(
                 TableStyle(
                     [
                         ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
                         ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
                         ("FONTSIZE", (0, 0), (-1, -1), 8.5),
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -209,9 +250,25 @@ class Reporter:
             story.append(Paragraph("3.2 Detailed Findings", h2))
             for idx, f in enumerate(findings, start=1):
                 story.append(Paragraph(f"{idx}. {sanitize_text_for_pdf(f.vuln_type)}", styles["Heading3"]))
+                sev_chip = Table([[Paragraph(f"{f.severity.value.upper()}", badge)]], colWidths=[0.95 * inch], rowHeights=[0.24 * inch])
+                sev_chip.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (0, 0), sev_bg(f.severity.value)),
+                            ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                            ("VALIGN", (0, 0), (0, 0), "MIDDLE"),
+                            ("BOX", (0, 0), (0, 0), 0, colors.white),
+                            ("LEFTPADDING", (0, 0), (0, 0), 3),
+                            ("RIGHTPADDING", (0, 0), (0, 0), 3),
+                            ("TOPPADDING", (0, 0), (0, 0), 2),
+                            ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                        ]
+                    )
+                )
+                story.append(sev_chip)
+                story.append(Spacer(1, 4))
                 story.append(
                     Paragraph(
-                        f"<b>Severity:</b> {f.severity.value.title()} &nbsp;&nbsp; "
                         f"<b>CVSS:</b> {f.cvss_score:.1f} &nbsp;&nbsp; "
                         f"<b>Confidence:</b> {f.confidence}",
                         styles["BodyText"],
@@ -234,7 +291,11 @@ class Reporter:
                     story.append(Paragraph("<b>Evidence</b>", small))
                     evidence_text = sanitize_text_for_pdf(f.evidence[:1200]).replace("\n", "<br/>")
                     story.append(Paragraph(evidence_text, mono))
-                story.append(Spacer(1, 10))
+                story.append(Spacer(1, 12))
+                divider = Table([[""]], colWidths=[6.9 * inch], rowHeights=[0.02 * inch])
+                divider.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E5E7EB"))]))
+                story.append(divider)
+                story.append(Spacer(1, 8))
 
         story.append(PageBreak())
 
@@ -260,6 +321,7 @@ class Reporter:
             canvas.saveState()
             canvas.setFont("Helvetica", 9)
             canvas.setFillGray(0.4)
+            canvas.drawString(0.8 * inch, 0.55 * inch, "AuditCrawl Security Report")
             canvas.drawRightString(7.9 * inch, 0.55 * inch, str(canvas.getPageNumber()))
             canvas.restoreState()
 
