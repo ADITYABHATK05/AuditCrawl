@@ -1,127 +1,59 @@
-import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { fastApi } from '../api'
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
-function SevBadge({ n, color }) {
-  if (!n) return null
-  return (
-    <span className={`badge badge-${color}`} style={{ marginRight: '0.25rem' }}>
-      {n}
-    </span>
-  )
-}
-
-export default function ScanArchiveTable({ limit = 20 }) {
-  const [scans,   setScans]   = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
+export default function ScanArchiveTable({ limit }) {
+  const [scans, setScans] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false
+    fetch('http://localhost:8000/api/scans')
+      .then(res => res.json())
+      .then(data => {
+        // Sort newest first
+        const sortedData = data.sort((a, b) => b.id - a.id);
+        setScans(limit ? sortedData.slice(0, limit) : sortedData);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch scans", err);
+        setLoading(false);
+      });
+  }, [limit]);
 
-    async function load() {
-      setLoading(true)
-      try {
-        // Probe run IDs 1..40 in parallel
-        const ids = Array.from({ length: 40 }, (_, i) => i + 1)
-        const results = await Promise.all(
-          ids.map(id =>
-            fastApi.get(`/api/scan/${id}`, { timeout: 3000 })
-              .then(r => ({ ...r.data, _found: true }))
-              .catch(() => null)
-          )
-        )
-        const found = results
-          .filter(Boolean)
-          .sort((a, b) => b.run_id - a.run_id)
-          .slice(0, limit)
-
-        if (!cancelled) setScans(found)
-      } catch (err) {
-        if (!cancelled) setError('Could not load scan history. Is the FastAPI backend running?')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [limit])
-
-  if (loading) return (
-    <div style={{ color: 'var(--muted)', fontSize: '0.85rem', padding: '0.75rem 0', fontFamily: 'var(--mono)' }}>
-      Loading history…
-    </div>
-  )
-
-  if (error) return (
-    <div className="alert alert-warning" style={{ marginTop: '0.5rem' }}>{error}</div>
-  )
-
-  if (!scans.length) return (
-    <div className="empty-state" style={{ padding: '2rem 0' }}>
-      <div className="empty-state-icon">🔍</div>
-      <p>No completed scans yet. <Link to="/scanner">Run a scan.</Link></p>
-    </div>
-  )
+  if (loading) return <div style={{ padding: '1rem', color: 'var(--muted)' }}>Loading archive...</div>;
 
   return (
-    <div className="table-wrap">
-      <table>
+    <div className="table-container">
+      <table className="table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
         <thead>
-          <tr>
-            <th>#</th>
-            <th>Target URL</th>
-            <th>Level</th>
-            <th>Findings</th>
-            <th>Risk</th>
-            <th>Action</th>
+          <tr style={{ borderBottom: '1px solid var(--border)' }}>
+            <th style={{ padding: '0.75rem' }}>Run ID</th>
+            <th style={{ padding: '0.75rem' }}>Target</th>
+            <th style={{ padding: '0.75rem' }}>Level</th>
+            <th style={{ padding: '0.75rem' }}>Status</th>
+            <th style={{ padding: '0.75rem' }}>Action</th>
           </tr>
         </thead>
         <tbody>
-          {scans.map(scan => {
-            const high   = countSev(scan.findings, ['High', 'Critical'])
-            const medium = countSev(scan.findings, ['Medium'])
-            const low    = countSev(scan.findings, ['Low'])
-            return (
-              <tr key={scan.run_id}>
-                <td style={{ fontFamily: 'var(--mono)', color: 'var(--muted)' }}>
-                  #{scan.run_id}
-                </td>
-                <td title={scan.target_url}
-                  style={{ fontFamily: 'var(--mono)', fontSize: '0.8rem', maxWidth: 240 }}>
-                  {trunc(scan.target_url, 40)}
-                </td>
-                <td>
-                  <span className="badge badge-info">L{scan.scan_level}</span>
-                </td>
-                <td style={{ fontWeight: 700, color: scan.findings_count ? 'var(--orange)' : 'var(--neon)' }}>
-                  {scan.findings_count}
-                </td>
-                <td>
-                  <SevBadge n={high}   color="high"   />
-                  <SevBadge n={medium} color="medium" />
-                  <SevBadge n={low}    color="low"    />
-                </td>
-                <td>
-                  <Link to={`/scan/backend/${scan.run_id}`} className="archive-link">
-                    View →
-                  </Link>
-                </td>
-              </tr>
-            )
-          })}
+          {scans.length === 0 ? (
+            <tr><td colSpan="5" style={{ padding: '1rem', textAlign: 'center' }}>No scans found.</td></tr>
+          ) : scans.map(scan => (
+            <tr key={scan.id} style={{ borderBottom: '1px solid var(--bg-hover)' }}>
+              <td style={{ padding: '0.75rem' }}>#{scan.id}</td>
+              <td style={{ padding: '0.75rem', fontFamily: 'var(--mono)' }}>{scan.target_url}</td>
+              <td style={{ padding: '0.75rem' }}>Lvl {scan.scan_level}</td>
+              <td style={{ padding: '0.75rem', color: scan.status === 'completed' ? 'var(--neon)' : 'inherit' }}>
+                {scan.status || 'Unknown'}
+              </td>
+              <td style={{ padding: '0.75rem' }}>
+                <Link to={`/scan/backend/${scan.id}`} className="btn btn-sm btn-ghost">
+                  View Report
+                </Link>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
-  )
-}
-
-function countSev(findings, sevs) {
-  return (findings || []).filter(f => sevs.includes(f.severity)).length
-}
-
-function trunc(s, n) {
-  if (!s) return '—'
-  return s.length > n ? s.slice(0, n) + '…' : s
+  );
 }

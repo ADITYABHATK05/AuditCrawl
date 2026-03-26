@@ -98,3 +98,23 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
         json_path=str(Path(settings.output_dir) / f"run_{run_id}.json"),
         xml_path=str(Path(settings.output_dir) / f"run_{run_id}.xml"),
     )
+
+@router.get("/scans")
+async def get_all_scans(session: AsyncSession = Depends(get_session)):
+    """Fetch scan history for the frontend archive."""
+    # Assuming ScanRun has a timestamp and status. Adjust attributes as per your models.py
+    rows = await session.execute(
+        select(ScanRun).order_by(ScanRun.id.desc())
+    )
+    scans = rows.scalars().all()
+    
+    return [
+        {
+            "id": s.id,
+            "target_url": s.target_url,
+            "scan_level": s.scan_level,
+            "status": "completed", # Replace with actual dynamic status if tracked in DB
+            "started_at": getattr(s, 'created_at', None) 
+        }
+        for s in scans
+    ]

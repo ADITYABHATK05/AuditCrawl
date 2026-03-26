@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { flaskStartScan, flaskGetJobStatus, flaskStopScan } from '../api'
-import ScanArchiveTable from '../components/ScanArchiveTable'
+import ScanArchiveTable from './ScanArchiveTable'
 
 const LEVELS = [
   { value: '1', name: 'Level 1 — Shallow', desc: '20 pages · depth 1 · ~30s' },
@@ -31,12 +31,16 @@ export default function Scanner() {
       try {
         const data = await flaskGetJobStatus(jobId)
         setJob(data)
+        
         if (data.status === 'completed') {
           stopPoll()
           setLoading(false)
-          const rid = data.run_id ?? data.result?.run_id
-          if (rid) setResultRunId(rid)
+          // FastAPI returns run_id at the top level of the response
+          if (data.run_id) {
+            setResultRunId(data.run_id)
+          }
         }
+        
         if (data.status === 'failed' || data.status === 'cancelled') {
           stopPoll()
           setLoading(false)
@@ -94,7 +98,6 @@ export default function Scanner() {
         <p className="page-sub">Non-destructive heuristic checks · authorized targets only</p>
       </div>
 
-      {/* What gets scanned */}
       <div className="alert alert-info" style={{ marginBottom: '1.25rem' }}>
         <InfoIcon />
         <span>
@@ -106,7 +109,6 @@ export default function Scanner() {
 
       <div className="card">
         <form className="scan-form" onSubmit={handleSubmit}>
-          {/* URL */}
           <div className="form-group">
             <label htmlFor="target-url">Target URL</label>
             <input
@@ -120,7 +122,6 @@ export default function Scanner() {
             />
           </div>
 
-          {/* Level */}
           <div className="form-group">
             <label>Scan Level</label>
             <div className="level-group">
@@ -143,7 +144,6 @@ export default function Scanner() {
             </div>
           </div>
 
-          {/* Permission */}
           <label className="permission-check">
             <input
               type="checkbox"
@@ -157,7 +157,6 @@ export default function Scanner() {
             </span>
           </label>
 
-          {/* Actions */}
           <div className="scan-action-row">
             <button
               type="submit"
@@ -186,7 +185,6 @@ export default function Scanner() {
         )}
       </div>
 
-      {/* Live progress */}
       {job && (
         <div className="job-card fade-in">
           <div className="job-header">
@@ -223,7 +221,7 @@ export default function Scanner() {
         </div>
       )}
 
-      {/* Scan archive */}
+      {/* Note: Ensure ScanArchiveTable exists and is imported correctly */}
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <div className="card-header">
           <div className="card-title"><ArchiveIcon /> Recent Scan Archive</div>
