@@ -2,16 +2,20 @@ import React, { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 
 export default function ReportView() {
-  const { source, itemId, fmt } = useParams()
+  const { source, id, itemId, fmt } = useParams()
+  // Support both /scan/:source/:id and /report/:source/:id/:fmt paths
+  const actualId = id || itemId
+  const actualFmt = fmt || 'json'
+  
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
 
   const rawUrl = source === 'backend'
-    ? `http://127.0.0.1:8000/output/run_${itemId}.${fmt}`
-    : fmt === 'json'
-      ? `http://127.0.0.1:5000/output/${itemId}/findings.json`
-      : `http://127.0.0.1:5000/output/${itemId}/report.xml`
+    ? `http://127.0.0.1:8000/output/run_${actualId}.${actualFmt}`
+    : actualFmt === 'json'
+      ? `http://127.0.0.1:5000/output/${actualId}/findings.json`
+      : `http://127.0.0.1:5000/output/${actualId}/report.xml`
 
   const downloadUrl = rawUrl
 
@@ -25,7 +29,7 @@ export default function ReportView() {
         if (cancelled) return
         // Pretty-print
         try {
-          if (fmt === 'json') setContent(JSON.stringify(JSON.parse(text), null, 2))
+          if (actualFmt === 'json') setContent(JSON.stringify(JSON.parse(text), null, 2))
           else setContent(text)
         } catch { setContent(text) }
       })
@@ -33,7 +37,7 @@ export default function ReportView() {
       .finally(() => { if (!cancelled) setLoading(false) })
 
     return () => { cancelled = true }
-  }, [rawUrl, fmt])
+  }, [rawUrl, actualFmt])
 
   const lines = content.split('\n')
 
@@ -41,13 +45,13 @@ export default function ReportView() {
     <div className="page fade-in">
       <div className="page-header">
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <Link to={`/scan/${source}/${itemId}`} className="btn btn-ghost btn-sm">← Results</Link>
-          <span className="badge badge-info">{fmt.toUpperCase()} Report</span>
+          <Link to={`/scan/${source}/${actualId}`} className="btn btn-ghost btn-sm">← Results</Link>
+          <span className="badge badge-info">{actualFmt.toUpperCase()} Report</span>
           <span className="badge badge-ok" style={{ fontFamily: 'var(--mono)' }}>
-            {source.toUpperCase()} #{itemId}
+            {source.toUpperCase()} #{actualId}
           </span>
         </div>
-        <h1 className="page-title">{fmt.toUpperCase()} Report Viewer</h1>
+        <h1 className="page-title">{actualFmt.toUpperCase()} Report Viewer</h1>
       </div>
 
       <div className="card" style={{ marginBottom: '0.75rem' }}>
@@ -56,7 +60,7 @@ export default function ReportView() {
             Open Raw ↗
           </a>
           <a href={downloadUrl} download className="btn btn-ghost btn-sm">
-            ⬇ Download {fmt.toUpperCase()}
+            ⬇ Download {actualFmt.toUpperCase()}
           </a>
         </div>
       </div>

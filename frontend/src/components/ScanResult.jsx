@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 const SEV_ORDER = ["critical", "high", "medium", "low", "info"];
 
@@ -93,6 +94,42 @@ export default function ScanResults({ scan, onBack }) {
       {isRunning && (
         <div className="progress-track">
           <div className="progress-bar" />
+        </div>
+      )}
+
+      {/* Report Download Links */}
+      {scan.run_id && !isRunning && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <Link 
+            to={`/report/backend/${scan.run_id}/json`}
+            className="btn btn-ghost btn-sm"
+            title="View JSON report"
+          >
+            📊 JSON Report
+          </Link>
+          <Link 
+            to={`/report/backend/${scan.run_id}/xml`}
+            className="btn btn-ghost btn-sm"
+            title="View XML report"
+          >
+            📋 XML Report
+          </Link>
+          <a 
+            href={`http://127.0.0.1:8000/output/run_${scan.run_id}.json`}
+            download
+            className="btn btn-ghost btn-sm"
+            title="Download JSON"
+          >
+            ⬇ JSON
+          </a>
+          <a 
+            href={`http://127.0.0.1:8000/output/run_${scan.run_id}.xml`}
+            download
+            className="btn btn-ghost btn-sm"
+            title="Download XML"
+          >
+            ⬇ XML
+          </a>
         </div>
       )}
 
