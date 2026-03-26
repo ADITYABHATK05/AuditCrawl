@@ -9,11 +9,16 @@ export default function Header({ scanCount }) {
 
   return (
     <header className="header">
-      <div className="header-logo">
-        <div className="logo-icon">⚡</div>
-        AuditCrawl
-        <span className="logo-sub">v1.0</span>
-      </div>
+      <button className="header-logo" onClick={() => navigate('/scanner')} title="Go to scanner">
+        <span className="logo-icon" aria-hidden="true">
+          <span className="logo-ring" />
+          <span className="logo-core" />
+        </span>
+        <span className="logo-text-wrap">
+          <span className="logo-text">AuditCrawl</span>
+          <span className="logo-sub">Web Security Scanner</span>
+        </span>
+      </button>
       <nav className="nav">
         <button
           className={`nav-btn ${isScanner ? "active" : ""}`}

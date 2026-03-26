@@ -222,7 +222,7 @@ export default function Scanner() {
       )}
 
       {/* Note: Ensure ScanArchiveTable exists and is imported correctly */}
-      <div className="card" style={{ marginTop: '1.5rem' }}>
+      <div className="card recent-archive-card" style={{ marginTop: '1.5rem' }}>
         <div className="card-header">
           <div className="card-title"><ArchiveIcon /> Recent Scan Archive</div>
           <Link to="/archive" className="btn btn-ghost btn-sm">Full Archive →</Link>

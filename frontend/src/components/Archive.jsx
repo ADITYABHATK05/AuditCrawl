@@ -10,7 +10,7 @@ export default function Archive() {
         <p className="page-sub">All completed scan runs with their findings</p>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
         <Link to="/scanner" className="btn btn-primary btn-sm">＋ New Scan</Link>
       </div>
 

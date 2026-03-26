@@ -2,6 +2,13 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 
 const SEV_ORDER = ["critical", "high", "medium", "low", "info"];
+const SEV_WEIGHT = { critical: 4, high: 3, medium: 2, low: 1, info: 0.5 };
+const EFFORT_OPTIONS = [
+  { key: "S", value: 1, label: "Small" },
+  { key: "M", value: 2, label: "Medium" },
+  { key: "L", value: 3, label: "Large" },
+];
+const PREFS_KEY = "auditcrawl.scanResultsPrefs";
 
 function severityClass(sev) {
   const s = (sev || "info").toLowerCase();
@@ -17,16 +24,107 @@ function StatusBadge({ status }) {
   );
 }
 
-function FindingCard({ finding }) {
+function SeverityDonut({ counts }) {
+  const levels = [
+    { key: "critical", label: "Critical", color: "#ff3355" },
+    { key: "high", label: "High", color: "#ffa040" },
+    { key: "medium", label: "Medium", color: "#ffb020" },
+    { key: "low", label: "Low", color: "#40aaff" },
+  ];
+
+  const total = levels.reduce((sum, level) => sum + (counts[level.key] || 0), 0);
+  const safeTotal = total > 0 ? total : 1;
+
+  let cursor = 0;
+  const gradientStops = levels.map((level) => {
+    const value = counts[level.key] || 0;
+    const start = cursor;
+    const end = cursor + (value / safeTotal) * 360;
+    cursor = end;
+    return `${level.color} ${start}deg ${end}deg`;
+  });
+
+  const critical = counts.critical || 0;
+  const high = counts.high || 0;
+  const medium = counts.medium || 0;
+  const low = counts.low || 0;
+
+  // Severity-priority health classification: any critical finding is always high risk.
+  const healthLabel =
+    critical > 0
+      ? "High Risk"
+      : high > 0
+        ? "Elevated Risk"
+        : medium > 0
+          ? "Moderate Risk"
+          : low > 0
+            ? "Low Risk"
+            : "No Findings";
+
+  return (
+    <div className="severity-donut-card">
+      <div className="severity-donut-header">
+        <div className="severity-donut-title">Vulnerability Severity</div>
+        <div className="severity-donut-subtitle">Instant site health overview</div>
+      </div>
+
+      <div className="severity-donut-layout">
+        <div
+          className="severity-donut"
+          style={{ background: `conic-gradient(${gradientStops.join(", ")})` }}
+          aria-label="Vulnerability severity distribution"
+          role="img"
+        >
+          <div className="severity-donut-center">
+            <div className="severity-donut-total">{total}</div>
+            <div className="severity-donut-total-label">Findings</div>
+          </div>
+        </div>
+
+        <div className="severity-donut-meta">
+          {levels.map((level) => (
+            <div className="severity-row" key={level.key}>
+              <span className="severity-dot" style={{ backgroundColor: level.color }} />
+              <span className="severity-label">{level.label}</span>
+              <span className="severity-count">{counts[level.key] || 0}</span>
+            </div>
+          ))}
+          <div className="severity-health">
+            <span>Health</span>
+            <span>{healthLabel}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FindingCard({ finding, fixValue, effortKey, onEffortChange, isTopRoi }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={`finding-card ${open ? "expanded" : ""}`} onClick={() => setOpen((v) => !v)}>
       <div className="finding-header">
         <span className={severityClass(finding.severity)}>{finding.severity || "info"}</span>
         <span className="finding-type">{finding.type}</span>
+        {isTopRoi && <span className="roi-badge">Best ROI</span>}
         <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>{open ? "▲" : "▼"}</span>
       </div>
       <div className="finding-url">{finding.url}</div>
+      <div className="finding-roi-row" onClick={(e) => e.stopPropagation()}>
+        <span className="finding-roi-score">Fix Value: {fixValue.toFixed(1)}</span>
+        <label className="finding-roi-label">
+          Effort
+          <select
+            value={effortKey}
+            onChange={(e) => onEffortChange(finding.type || "unknown", e.target.value)}
+            className="finding-roi-select"
+          >
+            {EFFORT_OPTIONS.map((opt) => (
+              <option key={opt.key} value={opt.key}>{opt.key}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       {open && (
         <div className="finding-body">
           {finding.param && (
@@ -63,13 +161,32 @@ export default function ScanResults({ scan, onBack }) {
   const [filterSev, setFilterSev] = useState("all");
   const [filterType, setFilterType] = useState("all");
   const [viewMode, setViewMode] = useState("grouped"); // "list" or "grouped"
+  const [sortMode, setSortMode] = useState("severity");
+  const [effortByType, setEffortByType] = useState({});
 
-  // Reset filters when scan changes
+  // Restore persisted preferences when scan changes
   useEffect(() => {
-    setFilterSev("all");
-    setFilterType("all");
-    setViewMode("grouped");
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      const prefs = raw ? JSON.parse(raw) : {};
+      setFilterSev(prefs.filterSev || "all");
+      setFilterType(prefs.filterType || "all");
+      setViewMode(prefs.viewMode || "grouped");
+      setSortMode(prefs.sortMode || "severity");
+      setEffortByType(prefs.effortByType || {});
+    } catch {
+      setFilterSev("all");
+      setFilterType("all");
+      setViewMode("grouped");
+      setSortMode("severity");
+      setEffortByType({});
+    }
   }, [scan?.run_id]);
+
+  useEffect(() => {
+    const prefs = { filterSev, filterType, viewMode, sortMode, effortByType };
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  }, [filterSev, filterType, viewMode, sortMode, effortByType]);
 
   if (!scan) {
     return (
@@ -96,14 +213,27 @@ export default function ScanResults({ scan, onBack }) {
   // Get unique findings (deduplicate by type)
   const uniqueFindings = vulnTypes.map(type => {
     const instances = groupedByType[type];
-    const severities = instances.map(f => f.severity || "info").sort();
+    const severities = instances.map((f) => (f.severity || "info").toLowerCase());
+    const mostSevere = severities.sort((a, b) => SEV_ORDER.indexOf(a) - SEV_ORDER.indexOf(b))[0] || "info";
+    const effortKey = effortByType[type] || "M";
+    const effortWeight = EFFORT_OPTIONS.find((opt) => opt.key === effortKey)?.value || 2;
+    const fixValue = ((SEV_WEIGHT[mostSevere] || 1) * instances.length * 10) / effortWeight;
     return {
       type,
       count: instances.length,
-      severity: severities[0], // Most severe
-      instances
+      severity: mostSevere,
+      instances,
+      effortKey,
+      fixValue,
     };
   }).sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity));
+
+  const sortedUniqueFindings =
+    sortMode === "fixValue"
+      ? [...uniqueFindings].sort((a, b) => b.fixValue - a.fixValue)
+      : uniqueFindings;
+
+  const topRoiTypes = new Set(sortedUniqueFindings.slice(0, 3).map((f) => f.type));
 
   // Calculate stats by severity
   const bySev = SEV_ORDER.reduce((acc, s) => {
@@ -118,7 +248,45 @@ export default function ScanResults({ scan, onBack }) {
     return sevMatch && typeMatch;
   });
 
+  const filteredForList =
+    sortMode === "fixValue"
+      ? [...filtered].sort((a, b) => {
+          const aType = a.type || "unknown";
+          const bType = b.type || "unknown";
+          const aScore = sortedUniqueFindings.find((x) => x.type === aType)?.fixValue || 0;
+          const bScore = sortedUniqueFindings.find((x) => x.type === bType)?.fixValue || 0;
+          return bScore - aScore;
+        })
+      : filtered;
+
   const isRunning = scan.status === "running" || scan.status === "queued";
+  const exportCsv = () => {
+    const rows = [
+      ["type", "severity", "url", "fix_value", "effort", "evidence"],
+      ...findings.map((f) => {
+        const type = f.type || "unknown";
+        const score = sortedUniqueFindings.find((x) => x.type === type);
+        return [
+          type,
+          (f.severity || "info").toLowerCase(),
+          f.url || "",
+          (score?.fixValue || 0).toFixed(1),
+          score?.effortKey || "M",
+          (f.evidence || "").replace(/\s+/g, " ").trim(),
+        ];
+      }),
+    ];
+    const csv = rows
+      .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `triage_run_${scan.run_id || "scan"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div>
@@ -144,6 +312,9 @@ export default function ScanResults({ scan, onBack }) {
           >
             📄 PDF Report
           </a>
+          <button className="btn btn-ghost btn-sm" onClick={exportCsv} title="Export triage CSV">
+            ⬇ Triage CSV
+          </button>
         </div>
       )}
 
@@ -171,6 +342,8 @@ export default function ScanResults({ scan, onBack }) {
         ))}
       </div>
 
+      <SeverityDonut counts={bySev} />
+
       {/* View Mode Toggle */}
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.25rem" }}>
         <button
@@ -184,6 +357,21 @@ export default function ScanResults({ scan, onBack }) {
           onClick={() => setViewMode("list")}
         >
           All Instances
+        </button>
+      </div>
+
+      <div className="filter-tabs">
+        <button
+          className={`filter-tab ${sortMode === "severity" ? "active" : ""}`}
+          onClick={() => setSortMode("severity")}
+        >
+          Sort by Severity
+        </button>
+        <button
+          className={`filter-tab ${sortMode === "fixValue" ? "active" : ""}`}
+          onClick={() => setSortMode("fixValue")}
+        >
+          Sort by Fix Value
         </button>
       </div>
 
@@ -264,8 +452,16 @@ export default function ScanResults({ scan, onBack }) {
                 </div>
                 
                 {/* Group by type within severity */}
-                {typesForSev.map(type => {
+                {(sortMode === "fixValue"
+                  ? [...typesForSev].sort((a, b) => {
+                      const aScore = sortedUniqueFindings.find((x) => x.type === a)?.fixValue || 0;
+                      const bScore = sortedUniqueFindings.find((x) => x.type === b)?.fixValue || 0;
+                      return bScore - aScore;
+                    })
+                  : typesForSev
+                ).map(type => {
                   const typeInstances = filtered.filter(f => (f.type || "unknown") === type);
+                  const typeScore = sortedUniqueFindings.find((x) => x.type === type);
                   
                   // Group by description to deduplicate
                   const byDescription = {};
@@ -299,6 +495,24 @@ export default function ScanResults({ scan, onBack }) {
                         borderBottom: "1px solid rgba(74, 96, 112, 0.3)"
                       }}>
                         {type}
+                        <div className="type-roi-row">
+                          <span className="finding-roi-score">Fix Value: {typeScore?.fixValue?.toFixed(1) || "0.0"}</span>
+                          {topRoiTypes.has(type) && <span className="roi-badge">Best ROI</span>}
+                          <label className="finding-roi-label">
+                            Effort
+                            <select
+                              value={typeScore?.effortKey || "M"}
+                              onChange={(e) =>
+                                setEffortByType((prev) => ({ ...prev, [type]: e.target.value }))
+                              }
+                              className="finding-roi-select"
+                            >
+                              {EFFORT_OPTIONS.map((opt) => (
+                                <option key={opt.key} value={opt.key}>{opt.key}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
                       </div>
                       
                       {/* Show each unique finding once with all affected URLs */}
@@ -412,7 +626,22 @@ export default function ScanResults({ scan, onBack }) {
         </div>
       ) : (
         // List view
-        filtered.map((f, idx) => <FindingCard key={idx} finding={f} />)
+        filteredForList.map((f, idx) => {
+          const type = f.type || "unknown";
+          const score = sortedUniqueFindings.find((x) => x.type === type);
+          return (
+            <FindingCard
+              key={idx}
+              finding={f}
+              fixValue={score?.fixValue || 0}
+              effortKey={score?.effortKey || "M"}
+              isTopRoi={topRoiTypes.has(type)}
+              onEffortChange={(typeName, effortKey) =>
+                setEffortByType((prev) => ({ ...prev, [typeName || "unknown"]: effortKey }))
+              }
+            />
+          );
+        })
       )}
 
       {scan.report_html_path && (

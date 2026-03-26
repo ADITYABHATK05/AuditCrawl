@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import (
@@ -117,19 +117,46 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
 @router.get("/scans")
 async def get_all_scans(session: AsyncSession = Depends(get_session)):
     """Fetch scan history for the frontend archive."""
-    # Assuming ScanRun has a timestamp and status. Adjust attributes as per your models.py
     rows = await session.execute(
         select(ScanRun).order_by(ScanRun.id.desc())
     )
     scans = rows.scalars().all()
-    
+
+    run_ids = [s.id for s in scans]
+    sev_counts_by_run: dict[int, dict[str, int]] = {
+        run_id: {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for run_id in run_ids
+    }
+    findings_count_by_run: dict[int, int] = {run_id: 0 for run_id in run_ids}
+
+    if run_ids:
+        sev_rows = await session.execute(
+            select(
+                VulnerabilityFinding.scan_run_id,
+                func.lower(VulnerabilityFinding.severity).label("severity"),
+                func.count(VulnerabilityFinding.id).label("count"),
+            )
+            .where(VulnerabilityFinding.scan_run_id.in_(run_ids))
+            .group_by(VulnerabilityFinding.scan_run_id, func.lower(VulnerabilityFinding.severity))
+        )
+
+        for run_id, severity, count in sev_rows.all():
+            sev = severity or ""
+            if sev in sev_counts_by_run[run_id]:
+                sev_counts_by_run[run_id][sev] = count
+            findings_count_by_run[run_id] += count
+
     return [
         {
             "id": s.id,
             "target_url": s.target_url,
             "scan_level": s.scan_level,
-            "status": "completed", # Replace with actual dynamic status if tracked in DB
-            "started_at": getattr(s, 'created_at', None) 
+            "status": s.status or "completed",
+            "started_at": getattr(s, "created_at", None),
+            "findings_count": findings_count_by_run.get(s.id, 0),
+            "severity_counts": sev_counts_by_run.get(
+                s.id, {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            ),
         }
         for s in scans
     ]

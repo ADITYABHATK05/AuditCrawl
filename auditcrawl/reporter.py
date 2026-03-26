@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import html
 from pathlib import Path
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -58,6 +59,12 @@ class Reporter:
         small = ParagraphStyle("Small", parent=styles["BodyText"], fontSize=9, leading=12)
         mono = ParagraphStyle("Mono", parent=styles["BodyText"], fontName="Courier", fontSize=9, leading=11)
 
+        def _safe_text(value: object, max_len: int | None = None) -> str:
+            text = "" if value is None else str(value)
+            if max_len is not None:
+                text = text[:max_len]
+            return html.escape(text, quote=True).replace("\n", "<br/>")
+
         sev = self.result.summary_by_severity()
         findings = self.result.findings
 
@@ -70,7 +77,7 @@ class Reporter:
         story.append(Spacer(1, 18))
         story.append(Paragraph("<b>Prepared By</b><br/>AuditCrawl Security", styles["Normal"]))
         story.append(Spacer(1, 6))
-        story.append(Paragraph(f"<b>Target</b><br/>{self.config.base_url}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Target</b><br/>{_safe_text(self.config.base_url)}", styles["Normal"]))
         story.append(PageBreak())
 
         # Table of Contents (static)
@@ -144,7 +151,7 @@ class Reporter:
             [
                 ["Target", "Critical", "High", "Medium", "Low", "Info"],
                 [
-                    self.config.base_url,
+                    _safe_text(self.config.base_url),
                     sev.get("critical", 0),
                     sev.get("high", 0),
                     sev.get("medium", 0),
@@ -177,7 +184,12 @@ class Reporter:
             story.append(Paragraph("3.1 Vulnerabilities Breakdown", h2))
             breakdown_rows = [["Title", "Severity", "CVSS", "URL"]]
             for f in findings:
-                breakdown_rows.append([f.vuln_type, f"{f.severity.value}".title(), f"{f.cvss_score:.1f}", f.url])
+                breakdown_rows.append([
+                    _safe_text(f.vuln_type, 180),
+                    _safe_text(f"{f.severity.value}".title(), 32),
+                    _safe_text(f"{f.cvss_score:.1f}", 16),
+                    _safe_text(f.url, 600),
+                ])
             breakdown = Table(breakdown_rows, colWidths=[2.5 * inch, 0.9 * inch, 0.6 * inch, 3.1 * inch])
             breakdown.setStyle(
                 TableStyle(
@@ -196,30 +208,36 @@ class Reporter:
 
             story.append(Paragraph("3.2 Detailed Findings", h2))
             for idx, f in enumerate(findings, start=1):
-                story.append(Paragraph(f"{idx}. {f.vuln_type}", styles["Heading3"]))
+                story.append(Paragraph(f"{idx}. {_safe_text(f.vuln_type, 220)}", styles["Heading3"]))
                 story.append(
                     Paragraph(
                         f"<b>Severity:</b> {f.severity.value.title()} &nbsp;&nbsp; "
                         f"<b>CVSS:</b> {f.cvss_score:.1f} &nbsp;&nbsp; "
-                        f"<b>Confidence:</b> {f.confidence}",
+                        f"<b>Confidence:</b> {_safe_text(f.confidence, 48)}",
                         styles["BodyText"],
                     )
                 )
-                story.append(Paragraph(f"<b>URL:</b> {f.url}", small))
-                story.append(Paragraph(f"<b>Method:</b> {f.method} &nbsp;&nbsp; <b>Parameter:</b> {f.parameter}", small))
+                story.append(Paragraph(f"<b>URL:</b> {_safe_text(f.url, 1200)}", small))
+                story.append(
+                    Paragraph(
+                        f"<b>Method:</b> {_safe_text(f.method, 24)} &nbsp;&nbsp; "
+                        f"<b>Parameter:</b> {_safe_text(f.parameter, 140)}",
+                        small,
+                    )
+                )
                 story.append(Spacer(1, 6))
                 story.append(Paragraph("<b>Description</b>", small))
-                story.append(Paragraph(f.description, styles["BodyText"]))
+                story.append(Paragraph(_safe_text(f.description, 3000), styles["BodyText"]))
                 story.append(Spacer(1, 4))
                 story.append(Paragraph("<b>Remediation</b>", small))
-                story.append(Paragraph(f.remediation, styles["BodyText"]))
+                story.append(Paragraph(_safe_text(f.remediation, 3000), styles["BodyText"]))
                 story.append(Spacer(1, 4))
                 story.append(Paragraph("<b>Payload</b>", small))
-                story.append(Paragraph((f.payload or "")[:900].replace("\n", "<br/>"), mono))
+                story.append(Paragraph(_safe_text(f.payload, 900), mono))
                 if f.evidence:
                     story.append(Spacer(1, 4))
                     story.append(Paragraph("<b>Evidence</b>", small))
-                    story.append(Paragraph(f.evidence[:1200].replace("\n", "<br/>"), mono))
+                    story.append(Paragraph(_safe_text(f.evidence, 1200), mono))
                 story.append(Spacer(1, 10))
 
         story.append(PageBreak())
