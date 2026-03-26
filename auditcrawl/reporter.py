@@ -1,5 +1,7 @@
 from __future__ import annotations
 import os
+import html
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -7,6 +9,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .config import ScanConfig
     from .models import ScanResult
+
+def sanitize_text_for_pdf(text: str) -> str:
+    """Remove all HTML tags and escape special characters for safe PDF rendering."""
+    if not text:
+        return ""
+    # Remove all HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Escape HTML entities
+    text = html.escape(text)
+    return text
 
 class Reporter:
     def __init__(self, config, result) -> None:
@@ -177,7 +189,7 @@ class Reporter:
             story.append(Paragraph("3.1 Vulnerabilities Breakdown", h2))
             breakdown_rows = [["Title", "Severity", "CVSS", "URL"]]
             for f in findings:
-                breakdown_rows.append([f.vuln_type, f"{f.severity.value}".title(), f"{f.cvss_score:.1f}", f.url])
+                breakdown_rows.append([sanitize_text_for_pdf(f.vuln_type), f"{f.severity.value}".title(), f"{f.cvss_score:.1f}", sanitize_text_for_pdf(f.url)])
             breakdown = Table(breakdown_rows, colWidths=[2.5 * inch, 0.9 * inch, 0.6 * inch, 3.1 * inch])
             breakdown.setStyle(
                 TableStyle(
@@ -196,7 +208,7 @@ class Reporter:
 
             story.append(Paragraph("3.2 Detailed Findings", h2))
             for idx, f in enumerate(findings, start=1):
-                story.append(Paragraph(f"{idx}. {f.vuln_type}", styles["Heading3"]))
+                story.append(Paragraph(f"{idx}. {sanitize_text_for_pdf(f.vuln_type)}", styles["Heading3"]))
                 story.append(
                     Paragraph(
                         f"<b>Severity:</b> {f.severity.value.title()} &nbsp;&nbsp; "
@@ -205,21 +217,23 @@ class Reporter:
                         styles["BodyText"],
                     )
                 )
-                story.append(Paragraph(f"<b>URL:</b> {f.url}", small))
-                story.append(Paragraph(f"<b>Method:</b> {f.method} &nbsp;&nbsp; <b>Parameter:</b> {f.parameter}", small))
+                story.append(Paragraph(f"<b>URL:</b> {sanitize_text_for_pdf(f.url)}", small))
+                story.append(Paragraph(f"<b>Method:</b> {sanitize_text_for_pdf(f.method)} &nbsp;&nbsp; <b>Parameter:</b> {sanitize_text_for_pdf(f.parameter or '')}", small))
                 story.append(Spacer(1, 6))
                 story.append(Paragraph("<b>Description</b>", small))
-                story.append(Paragraph(f.description, styles["BodyText"]))
+                story.append(Paragraph(sanitize_text_for_pdf(f.description), styles["BodyText"]))
                 story.append(Spacer(1, 4))
                 story.append(Paragraph("<b>Remediation</b>", small))
-                story.append(Paragraph(f.remediation, styles["BodyText"]))
+                story.append(Paragraph(sanitize_text_for_pdf(f.remediation), styles["BodyText"]))
                 story.append(Spacer(1, 4))
                 story.append(Paragraph("<b>Payload</b>", small))
-                story.append(Paragraph((f.payload or "")[:900].replace("\n", "<br/>"), mono))
+                payload_text = sanitize_text_for_pdf((f.payload or "")[:900]).replace("\n", "<br/>")
+                story.append(Paragraph(payload_text, mono))
                 if f.evidence:
                     story.append(Spacer(1, 4))
                     story.append(Paragraph("<b>Evidence</b>", small))
-                    story.append(Paragraph(f.evidence[:1200].replace("\n", "<br/>"), mono))
+                    evidence_text = sanitize_text_for_pdf(f.evidence[:1200]).replace("\n", "<br/>")
+                    story.append(Paragraph(evidence_text, mono))
                 story.append(Spacer(1, 10))
 
         story.append(PageBreak())
