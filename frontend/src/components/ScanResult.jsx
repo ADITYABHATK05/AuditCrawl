@@ -1,177 +1,155 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { fastApi } from '../api'
-import FindingsTable from '../components/FindingsTable'
-import VulnChart from '../components/VulnChart'
+import { useState } from "react";
 
-export default function ScanResult() {
-  const { source, itemId } = useParams()
-  const [scan,    setScan]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
+const SEV_ORDER = ["critical", "high", "medium", "low", "info"];
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError('')
+function severityClass(sev) {
+  const s = (sev || "info").toLowerCase();
+  return `sev sev-${s}`;
+}
 
-    async function load() {
-      try {
-        // Both "backend" and "legacy" sources can be fetched via FastAPI
-        // (legacy scans aren't in FastAPI DB, but backend scans are)
-        if (source === 'backend') {
-          const { data } = await fastApi.get(`/api/scan/${itemId}`)
-          if (!cancelled) setScan(data)
-        } else {
-          // Legacy scan — read JSON file via Flask static route
-          const resp = await fetch(
-            `http://127.0.0.1:5000/output/${itemId}/findings.json`
-          )
-          if (!resp.ok) throw new Error('Legacy scan not found')
-          const json = await resp.json()
-          // Shape into the same format as FastAPI response
-          const findings = (json.findings || []).map(f => ({
-            vulnerability_type: f.vulnerability,
-            severity: f.risk,
-            endpoint: f.endpoint,
-            evidence: f.evidence,
-            vulnerable_snippet: f.payload || '',
-            fix_snippet: f.remediation || '',
-          }))
-          if (!cancelled) setScan({
-            run_id: itemId,
-            target_url: json.target_url || 'unknown',
-            scan_level: '—',
-            findings_count: findings.length,
-            findings,
-            json_path: `http://127.0.0.1:5000/output/${itemId}/findings.json`,
-            xml_path: null,
-          })
-        }
-      } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load scan result')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
+function StatusBadge({ status }) {
+  return (
+    <span className={`badge badge-${status}`}>
+      {(status === "running" || status === "queued") && <span className="pulse" />}
+      {status}
+    </span>
+  );
+}
 
-    load()
-    return () => { cancelled = true }
-  }, [source, itemId])
-
-  const summary = useMemo(() => {
-    if (!scan) return {}
-    const findings = scan.findings || []
-    return {
-      total:    findings.length,
-      high:     findings.filter(f => ['High','Critical'].includes(f.severity)).length,
-      medium:   findings.filter(f => f.severity === 'Medium').length,
-      low:      findings.filter(f => f.severity === 'Low').length,
-    }
-  }, [scan])
-
-  if (loading) return (
-    <div className="page fade-in">
-      <div style={{ color: 'var(--muted)', fontFamily: 'var(--mono)', padding: '2rem 0' }}>
-        Loading scan result…
+function FindingCard({ finding }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`finding-card ${open ? "expanded" : ""}`} onClick={() => setOpen((v) => !v)}>
+      <div className="finding-header">
+        <span className={severityClass(finding.severity)}>{finding.severity || "info"}</span>
+        <span className="finding-type">{finding.type}</span>
+        <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>{open ? "▲" : "▼"}</span>
       </div>
+      <div className="finding-url">{finding.url}</div>
+      {open && (
+        <div className="finding-body">
+          {finding.param && (
+            <div>
+              <div className="field-label">Parameter</div>
+              <div className="code-block">{finding.param}</div>
+            </div>
+          )}
+          {finding.evidence && (
+            <div>
+              <div className="field-label">Evidence</div>
+              <div className="code-block">{finding.evidence}</div>
+            </div>
+          )}
+          {finding.description && (
+            <div>
+              <div className="field-label">Description</div>
+              <div style={{ fontSize: "0.82rem", color: "var(--text)" }}>{finding.description}</div>
+            </div>
+          )}
+          {finding.poc && (
+            <div>
+              <div className="field-label">PoC (educational)</div>
+              <div className="code-block">{finding.poc}</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
-  )
+  );
+}
 
-  if (error) return (
-    <div className="page fade-in">
-      <div className="alert alert-error">{error}</div>
-      <Link to="/archive" className="btn btn-ghost" style={{ marginTop: '1rem' }}>
-        ← Back to Archive
-      </Link>
-    </div>
-  )
+export default function ScanResults({ scan, onBack }) {
+  const [filter, setFilter] = useState("all");
 
-  const jsonUrl = source === 'backend'
-    ? `http://127.0.0.1:8000/output/run_${itemId}.json`
-    : `http://127.0.0.1:5000/output/${itemId}/findings.json`
+  if (!scan) {
+    return (
+      <div className="empty">
+        <div className="empty-icon">🔍</div>
+        <div className="empty-text">No scan selected. Start a new scan.</div>
+        <br />
+        <button className="btn btn-ghost" onClick={onBack}>← Back</button>
+      </div>
+    );
+  }
 
-  const xmlUrl = source === 'backend'
-    ? `http://127.0.0.1:8000/output/run_${itemId}.xml`
-    : null
+  const findings = scan.findings || [];
+  const filtered = filter === "all" ? findings : findings.filter((f) => (f.severity || "info").toLowerCase() === filter);
+
+  const bySev = SEV_ORDER.reduce((acc, s) => {
+    acc[s] = findings.filter((f) => (f.severity || "info").toLowerCase() === s).length;
+    return acc;
+  }, {});
+
+  const isRunning = scan.status === "running" || scan.status === "queued";
 
   return (
-    <div className="page fade-in">
-      {/* Header */}
-      <div className="page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-          <Link to="/archive" className="btn btn-ghost btn-sm">← Archive</Link>
-          <span className="badge badge-info" style={{ fontFamily: 'var(--mono)' }}>
-            {source.toUpperCase()} #{itemId}
-          </span>
-        </div>
-        <h1 className="page-title" style={{ marginTop: '0.5rem' }}>Scan Results</h1>
-        <p className="page-sub" style={{ fontFamily: 'var(--mono)', wordBreak: 'break-all' }}>
-          {scan.target_url}
-        </p>
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "0.35rem", flexWrap: "wrap" }}>
+        <div className="section-title" style={{ margin: 0 }}>Scan Results</div>
+        <StatusBadge status={scan.status} />
       </div>
+      <div className="section-sub">{scan.base_url} · {scan.target_domain}</div>
 
-      {/* Stat cards */}
-      <div className="stat-grid">
-        <div className="stat-card red">
-          <div className="stat-label">High / Critical</div>
-          <div className="stat-value red">{summary.high}</div>
-          <div className="stat-sub">findings</div>
-        </div>
-        <div className="stat-card orange">
-          <div className="stat-label">Medium</div>
-          <div className="stat-value orange">{summary.medium}</div>
-          <div className="stat-sub">findings</div>
-        </div>
-        <div className="stat-card green">
-          <div className="stat-label">Low</div>
-          <div className="stat-value green">{summary.low}</div>
-          <div className="stat-sub">findings</div>
-        </div>
-        <div className="stat-card blue">
-          <div className="stat-label">Total</div>
-          <div className="stat-value blue">{summary.total}</div>
-          <div className="stat-sub">all findings</div>
-        </div>
-      </div>
-
-      {/* Download links */}
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
-        <Link to={`/report/${source}/${itemId}/json`} className="btn btn-ghost btn-sm">
-          📄 View JSON Report
-        </Link>
-        <a href={jsonUrl} download className="btn btn-ghost btn-sm">
-          ⬇ Download JSON
-        </a>
-        {xmlUrl && (
-          <>
-            <Link to={`/report/${source}/${itemId}/xml`} className="btn btn-ghost btn-sm">
-              📄 View XML Report
-            </Link>
-            <a href={xmlUrl} download className="btn btn-ghost btn-sm">
-              ⬇ Download XML
-            </a>
-          </>
-        )}
-      </div>
-
-      {/* Vuln type breakdown */}
-      {scan.findings?.length > 0 && (
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <div className="card-header">
-            <div className="card-title">Vulnerability Type Breakdown</div>
-          </div>
-          <VulnChart findings={scan.findings} />
+      {isRunning && (
+        <div className="progress-track">
+          <div className="progress-bar" />
         </div>
       )}
 
-      {/* Findings table */}
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">Findings ({summary.total})</div>
+      {/* Stats */}
+      <div className="stats-bar">
+        <div className="stat-box">
+          <div className={`stat-val ${findings.length > 0 ? "red" : "green"}`}>{findings.length}</div>
+          <div className="stat-key">Findings</div>
         </div>
-        <FindingsTable findings={scan.findings || []} />
+        <div className="stat-box">
+          <div className="stat-val">{scan.endpoints_count || 0}</div>
+          <div className="stat-key">Endpoints</div>
+        </div>
+        {SEV_ORDER.slice(0, 3).map((s) => (
+          <div className="stat-box" key={s}>
+            <div className={`stat-val ${s === "critical" || s === "high" ? "red" : s === "medium" ? "orange" : ""}`}>
+              {bySev[s] || 0}
+            </div>
+            <div className="stat-key">{s}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="filter-tabs">
+        {["all", ...SEV_ORDER].map((s) => (
+          <button
+            key={s}
+            className={`filter-tab ${filter === s ? "active" : ""}`}
+            onClick={() => setFilter(s)}
+          >
+            {s} {s !== "all" && `(${bySev[s] || 0})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Findings */}
+      {filtered.length === 0 ? (
+        <div className="empty">
+          <div className="empty-icon">{isRunning ? "⟳" : "✓"}</div>
+          <div className="empty-text">
+            {isRunning ? "Scan in progress…" : filter === "all" ? "No findings detected." : `No ${filter} findings.`}
+          </div>
+        </div>
+      ) : (
+        filtered.map((f) => <FindingCard key={f.id} finding={f} />)
+      )}
+
+      {scan.report_html_path && (
+        <div style={{ marginTop: "1.5rem", fontSize: "0.8rem", color: "var(--muted)" }}>
+          📄 Full report saved to: <span style={{ color: "var(--accent)" }}>{scan.report_html_path}</span>
+        </div>
+      )}
+
+      <div style={{ marginTop: "1.5rem" }}>
+        <button className="btn btn-ghost" onClick={onBack}>← New Scan</button>
       </div>
     </div>
-  )
+  );
 }

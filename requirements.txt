@@ -1,5 +1,12 @@
-requests>=2.31.0
+# Core scanner dependencies (keep existing ones from your project)
+requests>=2.32.0
 beautifulsoup4>=4.12.0
-lxml>=5.0.0
-jinja2>=3.1.0
+lxml>=5.2.0
+urllib3>=2.2.0
+
+# API backend
 flask>=3.0.0
+flask-cors>=4.0.0
+
+# Existing project deps (add yours here if different)
+# sqlalchemy>=2.0.0   # optional SQLite extension
