@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import time
 import re
@@ -52,11 +53,15 @@ DB_ERROR_PATTERNS = re.compile(
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings: List[Finding] = []
-    findings += _error_based(endpoint, client)
-    findings += _boolean_based(endpoint, client)
+    findings += await _error_based(endpoint, client)
+    findings += await _boolean_based(endpoint, client)
     if lab_mode:
-        findings += _time_based(endpoint, client)
+        findings += await _time_based(endpoint, client)
     return _deduplicate(findings)
 
 
@@ -84,23 +89,23 @@ def _inject_param(url: str, params: dict, name: str, value: str) -> str:
     return urlunparse(parsed._replace(query=urlencode(new_params)))
 
 
-def _send(client: HttpClient, url: str, method: str, params: dict, name: str, payload: str):
+async def _send(client: HttpClient, url: str, method: str, params: dict, name: str, payload: str):
     new_params = dict(params)
     new_params[name] = payload
     if method == "POST":
-        return client.post(url, data=new_params)
+        return await client.post_async(url, data=new_params)
     test_url = _inject_param(url, params, name, payload)
-    return client.get(test_url)
+    return await client.get_async(test_url)
 
 
-def _error_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
+async def _error_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     findings = []
     for url, method, param, params, form in _param_variants(endpoint):
-        baseline_resp = client.get(url) if method == "GET" else None
+        baseline_resp = await client.get_async(url) if method == "GET" else None
         baseline_text = baseline_resp.text if baseline_resp else ""
 
         for payload in ERROR_PAYLOADS:
-            resp = _send(client, url, method, params, param, payload)
+            resp = await _send(client, url, method, params, param, payload)
             if resp is None:
                 continue
             if DB_ERROR_PATTERNS.search(resp.text) and not DB_ERROR_PATTERNS.search(baseline_text):
@@ -127,17 +132,17 @@ def _error_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     return findings
 
 
-def _boolean_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
+async def _boolean_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     findings = []
     for url, method, param, params, form in _param_variants(endpoint):
-        baseline_resp = _send(client, url, method, params, param, params.get(param, "1"))
+        baseline_resp = await _send(client, url, method, params, param, params.get(param, "1"))
         if baseline_resp is None:
             continue
         baseline_text = baseline_resp.text
 
         for true_pay, false_pay in BOOLEAN_PAIRS:
-            resp_true = _send(client, url, method, params, param, true_pay)
-            resp_false = _send(client, url, method, params, param, false_pay)
+            resp_true = await _send(client, url, method, params, param, true_pay)
+            resp_false = await _send(client, url, method, params, param, false_pay)
             if resp_true is None or resp_false is None:
                 continue
 
@@ -169,12 +174,12 @@ def _boolean_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     return findings
 
 
-def _time_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
+async def _time_based(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     findings = []
     for url, method, param, params, form in _param_variants(endpoint):
         for payload, expected_delay in TIME_PAYLOADS:
             t0 = time.monotonic()
-            resp = _send(client, url, method, params, param, payload)
+            resp = await _send(client, url, method, params, param, payload)
             elapsed = time.monotonic() - t0
             if resp is None:
                 continue

@@ -1008,3 +1008,80 @@ input::placeholder { color: var(--muted); }
   color: var(--muted);
   white-space: nowrap;
 }
+
+.coverage-card {
+  border-color: rgba(64,170,255,0.35);
+  background: linear-gradient(180deg, rgba(64,170,255,0.08), rgba(14,19,24,0.9));
+}
+
+.coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.7rem;
+}
+
+.coverage-metric {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(9,12,16,0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.coverage-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.coverage-metric strong {
+  font-family: var(--display);
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.coverage-level-row {
+  margin-top: 0.9rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.coverage-level-pill {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(14,19,24,0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.coverage-level-pill span {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.coverage-level-pill strong {
+  color: var(--info);
+  font-size: 0.9rem;
+}
+
+.coverage-note {
+  margin-top: 0.9rem;
+  border-left: 3px solid var(--info);
+  padding: 0.55rem 0.7rem;
+  background: rgba(64,170,255,0.08);
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .coverage-level-row {
+    grid-template-columns: 1fr;
+  }
+}

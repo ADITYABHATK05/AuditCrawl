@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from typing import List
@@ -43,9 +44,13 @@ RCE_RESPONSE_PATTERNS = re.compile(
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings = []
-    findings += _command_injection(endpoint, client, lab_mode)
-    findings += _ssti(endpoint, client)
+    findings += await _command_injection(endpoint, client, lab_mode)
+    findings += await _ssti(endpoint, client)
     return findings
 
 
@@ -64,29 +69,29 @@ def _collect_params(endpoint: Endpoint):
             yield form["action"], form["method"], inp["name"], data
 
 
-def _inject(client, url, method, params, param_name, payload):
+async def _inject(client, url, method, params, param_name, payload):
     new_params = dict(params)
     new_params[param_name] = payload
     if method == "POST":
-        return client.post(url, data=new_params)
+        return await client.post_async(url, data=new_params)
     parsed = urlparse(url)
     test_url = urlunparse(parsed._replace(query=urlencode(new_params)))
-    return client.get(test_url)
+    return await client.get_async(test_url)
 
 
-def _command_injection(endpoint: Endpoint, client: HttpClient, lab_mode: bool) -> List[Finding]:
+async def _command_injection(endpoint: Endpoint, client: HttpClient, lab_mode: bool) -> List[Finding]:
     findings = []
     for url, method, param, params in _collect_params(endpoint):
         if not CMD_PARAM_PATTERN.search(param) and not lab_mode:
             continue
 
-        baseline_resp = client.get(url) if method == "GET" else None
+        baseline_resp = await client.get_async(url) if method == "GET" else None
         baseline_text = baseline_resp.text if baseline_resp else ""
 
         for payload, marker in CMD_DETECTION_PAYLOADS:
             if "49" in marker:
                 continue  # Skip SSTI payloads here
-            resp = _inject(client, url, method, params, param, params.get(param, "127.0.0.1") + payload)
+            resp = await _inject(client, url, method, params, param, params.get(param, "127.0.0.1") + payload)
             if resp is None:
                 continue
 
@@ -115,15 +120,15 @@ def _command_injection(endpoint: Endpoint, client: HttpClient, lab_mode: bool) -
     return findings
 
 
-def _ssti(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
+async def _ssti(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     """Server-Side Template Injection detection."""
     findings = []
     for url, method, param, params in _collect_params(endpoint):
-        baseline_resp = client.get(url) if method == "GET" else None
+        baseline_resp = await client.get_async(url) if method == "GET" else None
         baseline_text = baseline_resp.text if baseline_resp else ""
 
         for payload, expected in [("{{7*7}}", "49"), ("${7*7}", "49"), ("<%= 7*7 %>", "49")]:
-            resp = _inject(client, url, method, params, param, payload)
+            resp = await _inject(client, url, method, params, param, payload)
             if resp is None:
                 continue
             if expected in resp.text and expected not in baseline_text:

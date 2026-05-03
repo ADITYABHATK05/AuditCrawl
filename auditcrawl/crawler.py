@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from typing import List, Set
@@ -35,6 +36,9 @@ class Crawler:
         return False
 
     def crawl(self) -> List[Endpoint]:
+        return asyncio.run(self.crawl_async())
+
+    async def crawl_async(self) -> List[Endpoint]:
         start_url = self.config.base_url
         queue = [(start_url, 0)]
         
@@ -69,7 +73,7 @@ class Crawler:
             logger.debug(f"Crawling [{depth}]: {clean_url}")
             print(f"[CRAWL] Fetching [{depth}]: {clean_url}")
 
-            resp = self.client.get(clean_url)
+            resp = await self.client.get_async(clean_url)
             # requests.Response is falsy for HTTP >= 400; we still want to record/scan it.
             if resp is None:
                 print(f"[ERROR] No response from {clean_url}")

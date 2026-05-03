@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from typing import List
@@ -72,14 +73,19 @@ DANGEROUS_CSP_PATTERNS = [
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings = []
-    resp = client.get(endpoint.url)
+    resp = await client.get_async(endpoint.url)
     if resp is None:
         return findings
 
     headers = {k.lower(): v for k, v in resp.headers.items()}
     findings += _check_missing_headers(endpoint.url, headers)
-    findings += _check_cors(endpoint.url, headers, client)
+    findings += _check_header_values(endpoint.url, headers)
+    findings += await _check_cors(endpoint.url, headers, client)
     findings += _check_csp_quality(endpoint.url, headers)
     findings += _check_server_disclosure(endpoint.url, headers)
     findings += _check_cookies(endpoint.url, resp)
@@ -109,7 +115,90 @@ def _check_missing_headers(url: str, headers: dict) -> List[Finding]:
     return findings
 
 
-def _check_cors(url: str, headers: dict, client: HttpClient) -> List[Finding]:
+def _check_header_values(url: str, headers: dict) -> List[Finding]:
+    findings = []
+    csp = headers.get("content-security-policy", "")
+    if csp:
+        csp_lower = csp.lower()
+        for pattern, desc in DANGEROUS_CSP_PATTERNS:
+            if pattern.search(csp):
+                findings.append(Finding(
+                    vuln_type="Weak Content-Security-Policy",
+                    severity=Severity.LOW,
+                    url=url,
+                    method="GET",
+                    parameter="Content-Security-Policy",
+                    payload=pattern.pattern,
+                    evidence=f"CSP: {csp[:300]}",
+                    description=desc,
+                    remediation="Review and tighten the CSP. Remove unsafe-inline and unsafe-eval. "
+                                "Use nonces or hashes for inline scripts instead.",
+                    cvss_score=4.3,
+                    confidence="high",
+                    false_positive_risk="low",
+                    poc=f"curl -I '{url}' | grep -i content-security-policy",
+                ))
+                break
+    xfo = headers.get("x-frame-options", "").strip().upper()
+    if xfo and xfo not in {"DENY", "SAMEORIGIN"}:
+        findings.append(Finding(
+            vuln_type="Weak X-Frame-Options",
+            severity=Severity.LOW,
+            url=url,
+            method="GET",
+            parameter="X-Frame-Options",
+            payload=xfo,
+            evidence=f"Unexpected X-Frame-Options value: {xfo}",
+            description="X-Frame-Options is present but not set to a safe value.",
+            remediation="Set X-Frame-Options to DENY or SAMEORIGIN.",
+            cvss_score=4.3,
+            confidence="high",
+            false_positive_risk="low",
+            poc=f"curl -I '{url}' | grep -i x-frame-options",
+        ))
+    xcto = headers.get("x-content-type-options", "").strip().lower()
+    if xcto and xcto != "nosniff":
+        findings.append(Finding(
+            vuln_type="Weak X-Content-Type-Options",
+            severity=Severity.LOW,
+            url=url,
+            method="GET",
+            parameter="X-Content-Type-Options",
+            payload=xcto,
+            evidence=f"Unexpected X-Content-Type-Options value: {xcto}",
+            description="X-Content-Type-Options is present but not set to nosniff.",
+            remediation="Set X-Content-Type-Options to nosniff.",
+            cvss_score=4.3,
+            confidence="high",
+            false_positive_risk="low",
+            poc=f"curl -I '{url}' | grep -i x-content-type-options",
+        ))
+    if url.startswith("https://"):
+        hsts = headers.get("strict-transport-security", "")
+        if hsts:
+            hsts_lower = hsts.lower()
+            max_age_match = re.search(r"max-age=(\d+)", hsts_lower)
+            max_age = int(max_age_match.group(1)) if max_age_match else 0
+            if max_age < 15552000:
+                findings.append(Finding(
+                    vuln_type="Weak HSTS Policy",
+                    severity=Severity.LOW,
+                    url=url,
+                    method="GET",
+                    parameter="Strict-Transport-Security",
+                    payload=hsts,
+                    evidence=f"HSTS max-age is too low or missing: {hsts}",
+                    description="HSTS is present but the max-age value is too low to provide durable protection.",
+                    remediation="Use a long HSTS max-age such as max-age=31536000 and includeSubDomains when appropriate.",
+                    cvss_score=4.3,
+                    confidence="high",
+                    false_positive_risk="low",
+                    poc=f"curl -I '{url}' | grep -i strict-transport-security",
+                ))
+    return findings
+
+
+async def _check_cors(url: str, headers: dict, client: HttpClient) -> List[Finding]:
     findings = []
     acao = headers.get("access-control-allow-origin", "")
     acac = headers.get("access-control-allow-credentials", "")
@@ -136,7 +225,7 @@ def _check_cors(url: str, headers: dict, client: HttpClient) -> List[Finding]:
         ))
 
     # Test for origin reflection
-    test_resp = client.get(url, headers={"Origin": "https://evil-audit-test.com"})
+    test_resp = await client.get_async(url, headers={"Origin": "https://evil-audit-test.com"})
     if test_resp:
         reflected_acao = test_resp.headers.get("Access-Control-Allow-Origin", "")
         if reflected_acao == "https://evil-audit-test.com":

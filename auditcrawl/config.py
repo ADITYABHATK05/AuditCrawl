@@ -35,6 +35,9 @@ class ScanConfig:
     auth_username_field: str = "username"
     auth_password_field: str = "password"
 
+    # alerts
+    webhook_url: Optional[str] = None
+
     # rate limiting
     request_delay: float = 0.1
     max_concurrent: int = 5

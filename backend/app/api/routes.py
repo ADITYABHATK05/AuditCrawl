@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import (
+    BatchScanRequest,
     FindingOut,
     JobStatusResponse,
     ScanEnqueueResponse,
@@ -114,6 +116,61 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
         pdf_path=str(Path(settings.output_dir) / f"run_{run_id}.pdf"),
     )
 
+@router.get("/scans/compare/{run_id1}/{run_id2}")
+async def compare_scans(run_id1: int, run_id2: int, session: AsyncSession = Depends(get_session)):
+    """Compare two scan runs and return differences (new, fixed, recurring, etc.)."""
+    from app.services.scanner import WebScanner
+    
+    # Fetch both scan runs
+    run1 = await session.get(ScanRun, run_id1)
+    run2 = await session.get(ScanRun, run_id2)
+    
+    if not run1 or not run2:
+        raise HTTPException(status_code=404, detail="One or both scan runs not found")
+    
+    # Fetch findings for both runs
+    rows1 = await session.execute(select(VulnerabilityFinding).where(VulnerabilityFinding.scan_run_id == run_id1))
+    rows2 = await session.execute(select(VulnerabilityFinding).where(VulnerabilityFinding.scan_run_id == run_id2))
+    
+    findings1 = rows1.scalars().all()
+    findings2 = rows2.scalars().all()
+    
+    # Convert to scanner format
+    findings_format_1 = [
+        {
+            "vulnerability_type": f.vulnerability_type,
+            "severity": f.severity,
+            "endpoint": f.endpoint,
+            "evidence": f.evidence,
+            "vulnerable_snippet": f.vulnerable_snippet,
+            "fix_snippet": f.fix_snippet,
+        }
+        for f in findings1
+    ]
+    findings_format_2 = [
+        {
+            "vulnerability_type": f.vulnerability_type,
+            "severity": f.severity,
+            "endpoint": f.endpoint,
+            "evidence": f.evidence,
+            "vulnerable_snippet": f.vulnerable_snippet,
+            "fix_snippet": f.fix_snippet,
+        }
+        for f in findings2
+    ]
+    
+    # Use WebScanner.compare_scans (static method or instantiate)
+    scanner = WebScanner()
+    comparison = scanner.compare_scans(findings_format_2, findings_format_1)  # Compare run2 against run1 (baseline)
+    
+    return {
+        "run_id_baseline": run_id1,
+        "run_id_current": run_id2,
+        "baseline_date": run1.created_at.isoformat() if run1.created_at else None,
+        "current_date": run2.created_at.isoformat() if run2.created_at else None,
+        "comparison": comparison,
+    }
+
 @router.get("/scans")
 async def get_all_scans(session: AsyncSession = Depends(get_session)):
     """Fetch scan history for the frontend archive."""
@@ -160,3 +217,222 @@ async def get_all_scans(session: AsyncSession = Depends(get_session)):
         }
         for s in scans
     ]
+
+@router.get("/scan/{run_id}/export/burp")
+async def export_scan_burp(run_id: int, session: AsyncSession = Depends(get_session)):
+    """Export scan findings in Burp Suite JSON format."""
+    from app.services.export_formats import export_to_burp_json
+    
+    run = await session.get(ScanRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    
+    rows = await session.execute(select(VulnerabilityFinding).where(VulnerabilityFinding.scan_run_id == run_id))
+    findings = rows.scalars().all()
+    
+    findings_list = [
+        {
+            "vulnerability_type": f.vulnerability_type,
+            "severity": f.severity,
+            "endpoint": f.endpoint,
+            "evidence": f.evidence,
+            "vulnerable_snippet": f.vulnerable_snippet,
+            "fix_snippet": f.fix_snippet,
+        }
+        for f in findings
+    ]
+    
+    burp_data = export_to_burp_json(findings_list, run.target_url, f"Scan {run_id}")
+    return {
+        "format": "burp",
+        "filename": f"auditcrawl_scan_{run_id}_burp.json",
+        "data": json.dumps(burp_data, indent=2),
+    }
+
+@router.get("/scan/{run_id}/export/zap")
+async def export_scan_zap(run_id: int, session: AsyncSession = Depends(get_session)):
+    """Export scan findings in OWASP ZAP JSON format."""
+    from app.services.export_formats import export_to_zap_json
+    
+    run = await session.get(ScanRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    
+    rows = await session.execute(select(VulnerabilityFinding).where(VulnerabilityFinding.scan_run_id == run_id))
+    findings = rows.scalars().all()
+    
+    findings_list = [
+        {
+            "vulnerability_type": f.vulnerability_type,
+            "severity": f.severity,
+            "endpoint": f.endpoint,
+            "evidence": f.evidence,
+            "vulnerable_snippet": f.vulnerable_snippet,
+            "fix_snippet": f.fix_snippet,
+        }
+        for f in findings
+    ]
+    
+    zap_data = export_to_zap_json(findings_list, run.target_url, f"Scan {run_id}")
+    return {
+        "format": "zap",
+        "filename": f"auditcrawl_scan_{run_id}_zap.json",
+        "data": json.dumps(zap_data, indent=2),
+    }
+
+@router.get("/scan/{run_id}/export/sarif")
+async def export_scan_sarif(run_id: int, session: AsyncSession = Depends(get_session)):
+    """Export scan findings in SARIF format."""
+    from app.services.export_formats import export_to_sarif
+    
+    run = await session.get(ScanRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    
+    rows = await session.execute(select(VulnerabilityFinding).where(VulnerabilityFinding.scan_run_id == run_id))
+    findings = rows.scalars().all()
+    
+    findings_list = [
+        {
+            "vulnerability_type": f.vulnerability_type,
+            "severity": f.severity,
+            "endpoint": f.endpoint,
+            "evidence": f.evidence,
+            "vulnerable_snippet": f.vulnerable_snippet,
+            "fix_snippet": f.fix_snippet,
+        }
+        for f in findings
+    ]
+    
+    sarif_data = export_to_sarif(findings_list, run.target_url, f"Scan {run_id}")
+    return {
+        "format": "sarif",
+        "filename": f"auditcrawl_scan_{run_id}_sarif.json",
+        "data": json.dumps(sarif_data, indent=2),
+    }
+
+
+# Distributed Scanning Endpoints
+@router.post("/batch-scans")
+async def create_batch_scan(request: BatchScanRequest):
+    """Create a distributed batch scan with multiple targets."""
+    from app.services.distributed_scanner import distributed_scan_manager
+    
+    targets = [t.model_dump() for t in request.targets]
+    batch = distributed_scan_manager.create_batch(targets, max_workers=request.max_workers)
+    
+    return {
+        "batch_id": batch.batch_id,
+        "target_count": len(batch.targets),
+        "status": batch.status.value,
+        "max_workers": batch.max_workers,
+    }
+
+
+@router.get("/batch-scans")
+async def list_batch_scans(limit: int = 10):
+    """List recent batch scans."""
+    from app.services.distributed_scanner import distributed_scan_manager
+    
+    batches = distributed_scan_manager.list_batches(limit=limit)
+    return [
+        {
+            "batch_id": b.batch_id,
+            "target_count": len(b.targets),
+            "status": b.status.value,
+            "created_at": b.created_at.isoformat(),
+            "progress": b.get_progress(),
+        }
+        for b in batches
+    ]
+
+
+@router.get("/batch-scans/{batch_id}")
+async def get_batch_progress(batch_id: str):
+    """Get progress of a batch scan."""
+    from app.services.distributed_scanner import distributed_scan_manager
+    
+    batch = distributed_scan_manager.get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    return {
+        "batch_id": batch.batch_id,
+        "status": batch.status.value,
+        "progress": batch.get_progress(),
+        "created_at": batch.created_at.isoformat(),
+        "started_at": batch.started_at.isoformat() if batch.started_at else None,
+        "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
+        "summary": batch.summary,
+    }
+
+
+@router.get("/batch-scans/{batch_id}/results")
+async def get_batch_results(batch_id: str):
+    """Get aggregated results for a batch scan."""
+    from app.services.distributed_scanner import distributed_scan_manager
+    
+    results = distributed_scan_manager.get_batch_results(batch_id)
+    if not results:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    return results
+
+
+@router.post("/batch-scans/{batch_id}/cancel")
+async def cancel_batch_scan(batch_id: str):
+    """Cancel a running batch scan."""
+    from app.services.distributed_scanner import distributed_scan_manager
+    
+    batch = distributed_scan_manager.cancel_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    return {
+        "batch_id": batch.batch_id,
+        "status": batch.status.value,
+        "message": "Batch cancelled",
+    }
+
+
+@router.post("/batch-scans/{batch_id}/start")
+async def start_batch_scan(batch_id: str, session: AsyncSession = Depends(get_session)):
+    """Start executing a batch scan."""
+    from app.services.distributed_scanner import distributed_scan_manager
+    from app.services.scanner import WebScanner
+    
+    batch = distributed_scan_manager.get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    async def scan_target(target):
+        """Scan a single target in the batch."""
+        scanner = WebScanner()
+        findings = await scanner.scan(
+            target_url=target.url,
+            scan_level=target.scan_level,
+            login_url=target.login_url,
+            username=target.username,
+            password=target.password,
+            auth_method=target.auth_method,
+        )
+        return {
+            "target_url": target.url,
+            "scan_level": target.scan_level,
+            "findings": findings,
+            "findings_count": len(findings),
+        }
+    
+    # Start batch scan in background
+    async def run_batch():
+        await distributed_scan_manager.run_batch(batch_id, scan_target)
+    
+    # Queue the batch for background execution
+    import asyncio
+    asyncio.create_task(run_batch())
+    
+    return {
+        "batch_id": batch.batch_id,
+        "status": "started",
+        "message": f"Batch scan started with {len(batch.targets)} targets",
+    }

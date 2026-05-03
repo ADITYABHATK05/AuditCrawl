@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 from typing import List
 from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
@@ -23,18 +24,22 @@ STORED_XSS_MARKER = "AUDITCRAWL_STORED_XSS_"
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings: List[Finding] = []
-    findings += _reflected_xss(endpoint, client)
-    findings += _stored_xss(endpoint, client)
+    findings += await _reflected_xss(endpoint, client)
+    findings += await _stored_xss(endpoint, client)
     return findings
 
 
-def _get_baseline(url: str, client: HttpClient) -> str:
-    resp = client.get(url)
+async def _get_baseline(url: str, client: HttpClient) -> str:
+    resp = await client.get_async(url)
     return resp.text if resp else ""
 
 
-def _reflected_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
+async def _reflected_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     findings = []
 
     # Test URL query params
@@ -45,7 +50,7 @@ def _reflected_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     if not params and not endpoint.forms:
         return findings
 
-    baseline = _get_baseline(endpoint.url, client)
+    baseline = await _get_baseline(endpoint.url, client)
 
     for param, orig_val in params.items():
         for payload in XSS_PAYLOADS:
@@ -54,7 +59,7 @@ def _reflected_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
             new_query = urlencode(test_params)
             test_url = urlunparse(parsed._replace(query=new_query))
 
-            resp = client.get(test_url)
+            resp = await client.get_async(test_url)
             if resp is None:
                 continue
 
@@ -81,7 +86,7 @@ def _reflected_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     # Test form inputs
     for form in endpoint.forms:
         form_baseline = ""
-        form_resp = client.get(form["action"])
+        form_resp = await client.get_async(form["action"])
         if form_resp:
             form_baseline = form_resp.text
 
@@ -94,9 +99,9 @@ def _reflected_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
                 data[name] = payload
 
                 if form["method"] == "POST":
-                    resp = client.post(form["action"], data=data)
+                        resp = await client.post_async(form["action"], data=data)
                 else:
-                    resp = client.get(form["action"], params=data)
+                        resp = await client.get_async(form["action"], params=data)
 
                 if resp is None:
                     continue
@@ -121,7 +126,7 @@ def _reflected_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     return findings
 
 
-def _stored_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
+async def _stored_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
     """
     Submit a unique marker via each form input, then re-fetch the page
     to check if it appears unencoded (stored XSS).
@@ -142,12 +147,12 @@ def _stored_xss(endpoint: Endpoint, client: HttpClient) -> List[Finding]:
             data = {i["name"]: i["value"] for i in form["inputs"]}
             data[name] = payload
 
-            submit_resp = client.post(form["action"], data=data)
+            submit_resp = await client.post_async(form["action"], data=data)
             if submit_resp is None:
                 continue
 
             # Re-fetch to check persistence
-            check_resp = client.get(endpoint.url)
+            check_resp = await client.get_async(endpoint.url)
             if check_resp is None:
                 continue
 

@@ -38,6 +38,19 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+For the FastAPI backend UI, install its own dependencies too:
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+For the Vite frontend:
+
+```bash
+cd frontend
+npm install
+```
+
 ## Usage
 
 ```bash
@@ -49,6 +62,23 @@ python main.py \
   --max-pages 100 \
   --output-dir output
 ```
+
+## Run Services
+
+Backend API:
+
+```bash
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Frontend dev server:
+
+```bash
+cd frontend
+npm run dev -- --host 127.0.0.1
+```
+
+Open `http://127.0.0.1:3000/` in your browser after the frontend starts.
 
 Enable only selected modules (otherwise all are enabled by default):
 

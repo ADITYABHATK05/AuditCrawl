@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from typing import List
@@ -39,12 +40,16 @@ URL_PARAM_NAMES = re.compile(
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings = []
-    findings += _probe_ssrf(endpoint, client, lab_mode)
+    findings += await _probe_ssrf(endpoint, client, lab_mode)
     return findings
 
 
-def _probe_ssrf(endpoint: Endpoint, client: HttpClient, lab_mode: bool) -> List[Finding]:
+async def _probe_ssrf(endpoint: Endpoint, client: HttpClient, lab_mode: bool) -> List[Finding]:
     findings = []
     all_params = _collect_params(endpoint)
 
@@ -57,12 +62,12 @@ def _probe_ssrf(endpoint: Endpoint, client: HttpClient, lab_mode: bool) -> List[
             data[param_name] = probe_url
 
             if method == "POST":
-                resp = client.post(context_url, data=data)
+                resp = await client.post_async(context_url, data=data)
             else:
                 parsed = urlparse(context_url)
                 new_q = urlencode(data)
                 test_url = urlunparse(parsed._replace(query=new_q))
-                resp = client.get(test_url)
+                resp = await client.get_async(test_url)
 
             if resp is None:
                 continue

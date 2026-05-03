@@ -1,13 +1,37 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, HttpUrl
-from typing import Literal
+from typing import Literal, Optional
 
 
 class ScanRequest(BaseModel):
     target_url: HttpUrl
     scan_level: Literal["1", "2", "3"] = "2"
     use_selenium: bool = False
+    # Authentication fields
+    login_url: Optional[str] = None  # URL to perform login
+    username: Optional[str] = None  # Username for authentication
+    password: Optional[str] = None  # Password for authentication
+    auth_method: Optional[Literal["form", "basic", "bearer", "custom"]] = None  # Authentication method
+    auth_headers: Optional[dict[str, str]] = None  # Custom headers for auth (e.g., {"Authorization": "Bearer token"})
+    cookies: Optional[dict[str, str]] = None  # Pre-populated cookies for session
+
+
+class BatchScanTarget(BaseModel):
+    """Individual target in a batch scan."""
+    url: str
+    scan_level: Literal["1", "2", "3"] = "2"
+    login_url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    auth_method: Optional[Literal["form", "basic", "bearer", "custom"]] = None
+    tags: Optional[list[str]] = None
+
+
+class BatchScanRequest(BaseModel):
+    """Request for distributed batch scanning."""
+    targets: list[BatchScanTarget]
+    max_workers: int = 3  # Number of parallel workers
 
 
 class FindingOut(BaseModel):

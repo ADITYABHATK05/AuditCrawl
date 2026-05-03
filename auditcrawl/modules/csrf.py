@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from typing import List
@@ -23,17 +24,21 @@ CSRF_META_PATTERNS = re.compile(
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings = []
     for form in endpoint.forms:
         if form["method"] != "POST":
             continue
-        finding = _check_form_csrf(endpoint, form, client)
+        finding = await _check_form_csrf(endpoint, form, client)
         if finding:
             findings.append(finding)
     return findings
 
 
-def _check_form_csrf(endpoint: Endpoint, form: dict, client: HttpClient) -> Finding | None:
+async def _check_form_csrf(endpoint: Endpoint, form: dict, client: HttpClient) -> Finding | None:
     inputs = form.get("inputs", [])
     input_names = [i["name"] for i in inputs]
 
@@ -41,14 +46,14 @@ def _check_form_csrf(endpoint: Endpoint, form: dict, client: HttpClient) -> Find
     has_token_field = any(CSRF_TOKEN_PATTERNS.search(name) for name in input_names)
 
     # Also check the page source for CSRF meta tags
-    resp = client.get(endpoint.url)
+    resp = await client.get_async(endpoint.url)
     has_meta_token = False
     if resp:
         has_meta_token = bool(CSRF_META_PATTERNS.search(resp.text))
 
     if has_token_field or has_meta_token:
         # CSRF protection present — now check if it's actually enforced
-        finding = _verify_token_enforcement(endpoint, form, client)
+        finding = await _verify_token_enforcement(endpoint, form, client)
         return finding  # returns None if enforced, Finding if bypassable
 
     # No token found at all — missing CSRF protection
@@ -77,7 +82,7 @@ def _check_form_csrf(endpoint: Endpoint, form: dict, client: HttpClient) -> Find
     )
 
 
-def _verify_token_enforcement(endpoint: Endpoint, form: dict, client: HttpClient) -> Finding | None:
+async def _verify_token_enforcement(endpoint: Endpoint, form: dict, client: HttpClient) -> Finding | None:
     """
     Try submitting the form without the CSRF token (or with a tampered token).
     If it succeeds (200/302 and similar response body), the token is not enforced.
@@ -86,7 +91,7 @@ def _verify_token_enforcement(endpoint: Endpoint, form: dict, client: HttpClient
     data_with_token = {i["name"]: i["value"] for i in inputs}
 
     # Submit with token for baseline
-    baseline = client.post(form["action"], data=data_with_token)
+    baseline = await client.post_async(form["action"], data=data_with_token)
     if baseline is None:
         return None
 
@@ -98,7 +103,7 @@ def _verify_token_enforcement(endpoint: Endpoint, form: dict, client: HttpClient
     if data_without_token == data_with_token:
         return None  # No token was present to remove
 
-    tampered = client.post(form["action"], data=data_without_token)
+    tampered = await client.post_async(form["action"], data=data_without_token)
     if tampered is None:
         return None
 

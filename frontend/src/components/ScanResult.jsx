@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import ExportButtons from "./ExportButtons";
 
 const SEV_ORDER = ["critical", "high", "medium", "low", "info"];
 const SEV_WEIGHT = { critical: 4, high: 3, medium: 2, low: 1, info: 0.5 };
@@ -316,6 +317,11 @@ export default function ScanResults({ scan, onBack }) {
             ⬇ Triage CSV
           </button>
         </div>
+      )}
+
+      {/* Export to Security Tools */}
+      {scan.run_id && !isRunning && (
+        <ExportButtons runId={scan.run_id} />
       )}
 
       {/* Stats */}

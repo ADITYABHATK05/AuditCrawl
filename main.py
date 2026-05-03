@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Output
     parser.add_argument("--output-dir", default="output", help="Output directory (default: output)")
+    parser.add_argument("--webhook-url", default=None, help="Optional Slack/Discord webhook URL for high-severity scan alerts")
 
     return parser
 
@@ -105,6 +106,7 @@ def main() -> int:
         auth_password=args.auth_password,
         auth_username_field=args.auth_username_field,
         auth_password_field=args.auth_password_field,
+        webhook_url=args.webhook_url,
     )
 
     print("=" * 60)

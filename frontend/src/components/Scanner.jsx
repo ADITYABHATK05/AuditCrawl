@@ -1,13 +1,50 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { flaskStartScan, flaskGetJobStatus, flaskStopScan } from '../api'
+import { flaskStartScan, flaskGetJobStatus, flaskStopScan, getAllScans } from '../api'
 import ScanArchiveTable from './ScanArchiveTable'
+import BatchScanForm from './BatchScanForm'
+import BatchScanHistory from './BatchScanHistory'
 
 const LEVELS = [
   { value: '1', name: 'Level 1 — Shallow', desc: '20 pages · depth 1 · ~30s' },
   { value: '2', name: 'Level 2 — Medium',  desc: '80 pages · depth 3 · ~2min' },
   { value: '3', name: 'Level 3 — Deep',    desc: '200 pages · depth 5 · ~5min' },
 ]
+
+const PROFILE_BY_LEVEL = {
+  '1': { maxPages: 20, maxDepth: 1 },
+  '2': { maxPages: 80, maxDepth: 3 },
+  '3': { maxPages: 200, maxDepth: 5 },
+}
+
+function normalizeTargetUrl(value) {
+  if (!value) return ''
+  return String(value).trim().replace(/\/+$/, '').toLowerCase()
+}
+
+function buildCoverageInsight(latestByLevel, currentLevel) {
+  const l1 = latestByLevel['1']
+  const l2 = latestByLevel['2']
+  const l3 = latestByLevel['3']
+
+  if (l1 != null && l2 != null && l3 != null) {
+    if (l1 < l2 && l2 === l3) {
+      return 'Depth is working: deeper crawling found more issues by level 2, then plateaued. Level 3 did not add new unique findings for this target.'
+    }
+    if (l1 === l2 && l2 === l3) {
+      return 'All levels currently return the same finding set. This usually means vulnerable endpoints are reachable early, not that scanning is broken.'
+    }
+    if (l1 <= l2 && l2 <= l3 && (l1 < l3 || l2 < l3)) {
+      return 'Depth is expanding coverage: higher levels are uncovering additional findings on this target.'
+    }
+  }
+
+  if (currentLevel === '3') {
+    return 'Level 3 explores the widest crawl budget. If counts match level 2, the target likely has no additional unique vulnerable paths beyond medium depth.'
+  }
+
+  return 'Finding counts can repeat across levels when deeper pages do not introduce new unique vulnerabilities.'
+}
 
 export default function Scanner() {
   const [targetUrl,     setTargetUrl]     = useState('http://127.0.0.1:5000')
@@ -17,6 +54,8 @@ export default function Scanner() {
   const [error,         setError]         = useState('')
   const [loading,       setLoading]       = useState(false)
   const [resultRunId,   setResultRunId]   = useState(null)
+  const [sameTargetRuns, setSameTargetRuns] = useState([])
+  const [comparisonError, setComparisonError] = useState('')
   const pollRef = useRef(null)
 
   const stopPoll = useCallback(() => {
@@ -90,6 +129,44 @@ export default function Scanner() {
   const isDone = job?.status === 'completed'
   const isFail = job?.status === 'failed'
   const isRunning = job?.status === 'running' || job?.status === 'queued'
+  const currentResult = job?.result || null
+  const currentLevel = currentResult?.scan_level || scanLevel
+  const currentProfile = PROFILE_BY_LEVEL[currentLevel] || PROFILE_BY_LEVEL['2']
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSameTargetRuns() {
+      if (!isDone || !currentResult?.target_url) return
+      try {
+        setComparisonError('')
+        const rows = await getAllScans()
+        if (cancelled) return
+        const normalizedTarget = normalizeTargetUrl(currentResult.target_url)
+        const sameTarget = rows.filter((row) => normalizeTargetUrl(row.target_url) === normalizedTarget)
+        setSameTargetRuns(sameTarget.slice(0, 12))
+      } catch (_err) {
+        if (!cancelled) {
+          setComparisonError('Could not load same-target comparison history.')
+          setSameTargetRuns([])
+        }
+      }
+    }
+
+    loadSameTargetRuns()
+    return () => {
+      cancelled = true
+    }
+  }, [isDone, currentResult?.target_url, resultRunId])
+
+  const latestByLevel = sameTargetRuns.reduce((acc, run) => {
+    if (!acc[run.scan_level]) {
+      acc[run.scan_level] = run.findings_count
+    }
+    return acc
+  }, {})
+
+  const coverageInsight = buildCoverageInsight(latestByLevel, currentLevel)
 
   return (
     <div className="page fade-in">
@@ -221,6 +298,54 @@ export default function Scanner() {
         </div>
       )}
 
+      {isDone && currentResult && (
+        <div className="card coverage-card fade-in">
+          <div className="card-header" style={{ marginBottom: '0.75rem' }}>
+            <div className="card-title"><RadarIcon /> Scan Coverage Insight</div>
+          </div>
+
+          <div className="coverage-grid">
+            <div className="coverage-metric">
+              <span className="coverage-label">Scan Level</span>
+              <strong>{currentLevel}</strong>
+            </div>
+            <div className="coverage-metric">
+              <span className="coverage-label">Configured Depth</span>
+              <strong>{currentProfile.maxDepth}</strong>
+            </div>
+            <div className="coverage-metric">
+              <span className="coverage-label">Configured Max Pages</span>
+              <strong>{currentProfile.maxPages}</strong>
+            </div>
+            <div className="coverage-metric">
+              <span className="coverage-label">Endpoints Discovered</span>
+              <strong>{currentResult.endpoints_count ?? 0}</strong>
+            </div>
+            <div className="coverage-metric">
+              <span className="coverage-label">Findings</span>
+              <strong>{currentResult.findings_count ?? 0}</strong>
+            </div>
+          </div>
+
+          <div className="coverage-level-row">
+            {['1', '2', '3'].map((lvl) => (
+              <div key={lvl} className="coverage-level-pill">
+                <span>Level {lvl}</span>
+                <strong>{latestByLevel[lvl] ?? '—'} findings</strong>
+              </div>
+            ))}
+          </div>
+
+          <p className="coverage-note">{coverageInsight}</p>
+
+          {comparisonError && (
+            <div className="alert alert-error" style={{ marginTop: '0.8rem' }}>
+              <ErrIcon /> {comparisonError}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Note: Ensure ScanArchiveTable exists and is imported correctly */}
       <div className="card recent-archive-card" style={{ marginTop: '1.5rem' }}>
         <div className="card-header">
@@ -229,6 +354,10 @@ export default function Scanner() {
         </div>
         <ScanArchiveTable limit={8} />
       </div>
+
+      {/* Batch Scanning */}
+      <BatchScanForm />
+      <BatchScanHistory />
     </div>
   )
 }
@@ -265,5 +394,14 @@ const ArchiveIcon = () => (
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/>
     <line x1="10" y1="12" x2="14" y2="12"/>
+  </svg>
+)
+const RadarIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9"/>
+    <circle cx="12" cy="12" r="5"/>
+    <line x1="12" y1="12" x2="19" y2="9"/>
+    <circle cx="19" cy="9" r="1" fill="currentColor"/>
   </svg>
 )

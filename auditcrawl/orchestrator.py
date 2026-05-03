@@ -1,15 +1,19 @@
 from __future__ import annotations
+import asyncio
 import logging
 import time
 import json
 import os
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import urlparse
+
+import requests
 
 from .config import ScanConfig
 from .http_client import HttpClient
 from .crawler import Crawler
-from .models import Endpoint, Finding, ScanResult
+from .models import Endpoint, Finding, ScanResult, Severity
 from .modules import xss, sqli, ssrf, idor, csrf, headers, open_redirect, auth, rce
 from .reporter import Reporter
 
@@ -32,6 +36,9 @@ class Scanner:
             self._progress_callback(stage, message, pct)
 
     def run(self) -> ScanResult:
+        return asyncio.run(self.run_async())
+
+    async def run_async(self) -> ScanResult:
         cfg = self.config
         result = ScanResult()
         start = time.monotonic()
@@ -39,70 +46,126 @@ class Scanner:
         os.makedirs(cfg.output_dir, exist_ok=True)
         _setup_logging(cfg.output_dir)
 
-        # Login if configured
-        if cfg.auth_login_url and cfg.auth_username:
-            self._emit("auth", "Performing login...", 2)
-            self.client.login()
+        async with self.client:
+            # Login if configured
+            if cfg.auth_login_url and cfg.auth_username:
+                self._emit("auth", "Performing login...", 2)
+                await self.client.login_async()
 
-        # Crawl
-        self._emit("crawl", f"Starting crawl from {cfg.base_url}", 5)
-        crawler = Crawler(cfg, self.client)
-        endpoints = crawler.crawl()
-        result.endpoints = endpoints
-        self._emit("crawl", f"Discovered {len(endpoints)} endpoints", 25)
+            # Crawl
+            self._emit("crawl", f"Starting crawl from {cfg.base_url}", 5)
+            crawler = Crawler(cfg, self.client)
+            endpoints = await crawler.crawl_async()
+            result.endpoints = endpoints
+            self._emit("crawl", f"Discovered {len(endpoints)} endpoints", 25)
 
-        # De-duplicate endpoints for scanning
-        scan_targets = _deduplicate_endpoints(endpoints)
-        total = len(scan_targets)
-        findings: List[Finding] = []
+            # De-duplicate endpoints for scanning
+            scan_targets = _deduplicate_endpoints(endpoints)
+            total = len(scan_targets)
+            findings: List[Finding] = []
 
-        for i, ep in enumerate(scan_targets):
-            pct = 25 + int(70 * i / max(total, 1))
-            self._emit("scan", f"[{i+1}/{total}] Scanning {ep.url}", pct)
+            for i, ep in enumerate(scan_targets):
+                pct = 25 + int(70 * i / max(total, 1))
+                self._emit("scan", f"[{i+1}/{total}] Scanning {ep.url}", pct)
 
-            if cfg.enable_xss:
-                findings += _safe_run(xss.scan, ep, self.client, cfg.lab_mode, "xss")
-            if cfg.enable_sqli:
-                findings += _safe_run(sqli.scan, ep, self.client, cfg.lab_mode, "sqli")
-            if cfg.enable_ssrf:
-                findings += _safe_run(ssrf.scan, ep, self.client, cfg.lab_mode, "ssrf")
-            if cfg.enable_idor:
-                findings += _safe_run(idor.scan, ep, self.client, cfg.lab_mode, "idor")
-            if cfg.enable_csrf:
-                findings += _safe_run(csrf.scan, ep, self.client, cfg.lab_mode, "csrf")
-            if cfg.enable_headers:
-                findings += _safe_run(headers.scan, ep, self.client, cfg.lab_mode, "headers")
-            if cfg.enable_open_redirect:
-                findings += _safe_run(open_redirect.scan, ep, self.client, cfg.lab_mode, "open_redirect")
-            if cfg.enable_auth:
-                findings += _safe_run(auth.scan, ep, self.client, cfg.lab_mode, "auth")
-            if cfg.enable_rce:
-                findings += _safe_run(rce.scan, ep, self.client, cfg.lab_mode, "rce")
+                if cfg.enable_xss:
+                    findings += await _safe_run_async(xss.scan_async, ep, self.client, cfg.lab_mode, "xss")
+                if cfg.enable_sqli:
+                    findings += await _safe_run_async(sqli.scan_async, ep, self.client, cfg.lab_mode, "sqli")
+                if cfg.enable_ssrf:
+                    findings += await _safe_run_async(ssrf.scan_async, ep, self.client, cfg.lab_mode, "ssrf")
+                if cfg.enable_idor:
+                    findings += await _safe_run_async(idor.scan_async, ep, self.client, cfg.lab_mode, "idor")
+                if cfg.enable_csrf:
+                    findings += await _safe_run_async(csrf.scan_async, ep, self.client, cfg.lab_mode, "csrf")
+                if cfg.enable_headers:
+                    findings += await _safe_run_async(headers.scan_async, ep, self.client, cfg.lab_mode, "headers")
+                if cfg.enable_open_redirect:
+                    findings += await _safe_run_async(open_redirect.scan_async, ep, self.client, cfg.lab_mode, "open_redirect")
+                if cfg.enable_auth:
+                    findings += await _safe_run_async(auth.scan_async, ep, self.client, cfg.lab_mode, "auth")
+                if cfg.enable_rce:
+                    findings += await _safe_run_async(rce.scan_async, ep, self.client, cfg.lab_mode, "rce")
 
-        result.findings = _deduplicate_findings(findings)
-        result.duration_seconds = time.monotonic() - start
+            result.findings = _deduplicate_findings(findings)
+            result.duration_seconds = time.monotonic() - start
 
-        # Report
-        self._emit("report", "Generating reports...", 96)
-        reporter = Reporter(cfg, result)
-        # Only generate the PDF report for users to download.
-        result.report_pdf_path = reporter.write_pdf()
-        result.scan_log_path = str(Path(cfg.output_dir) / "scan.log")
+            # Report
+            self._emit("report", "Generating reports...", 96)
+            reporter = Reporter(cfg, result)
+            # Only generate the PDF report for users to download.
+            result.report_pdf_path = reporter.write_pdf()
+            result.scan_log_path = str(Path(cfg.output_dir) / "scan.log")
+
+        _maybe_send_webhook_alert(self, result)
 
         self._emit("done", f"Scan complete. {len(result.findings)} findings.", 100)
-        # Be tolerant if an older/alternate HttpClient implementation is used.
-        close_fn = getattr(self.client, "close", None)
-        if callable(close_fn):
-            close_fn()
         return result
 
 
-def _safe_run(fn, endpoint: Endpoint, client: HttpClient, lab_mode: bool, name: str) -> List[Finding]:
+async def _safe_run_async(fn, endpoint: Endpoint, client: HttpClient, lab_mode: bool, name: str) -> List[Finding]:
     try:
-        return fn(endpoint, client, lab_mode)
+        result = fn(endpoint, client, lab_mode)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
     except Exception as exc:
         logger.warning("Module %s failed on %s: %s", name, endpoint.url, exc)
         return []
+
+
+def _severity_value(finding: Finding) -> str:
+    return getattr(finding.severity, "value", str(finding.severity)).lower()
+
+
+def _format_webhook_message(result: ScanResult, config: ScanConfig) -> str:
+    sev = result.summary_by_severity()
+    critical = sev.get("critical", 0)
+    high = sev.get("high", 0)
+    medium = sev.get("medium", 0)
+    low = sev.get("low", 0)
+
+    lines = [
+        "AuditCrawl scan completed.",
+        f"Target: {config.base_url}",
+        f"Findings: critical={critical}, high={high}, medium={medium}, low={low}",
+    ]
+
+    notable = [f for f in result.findings if _severity_value(f) in {"critical", "high"}]
+    for finding in notable[:3]:
+        lines.append(f"- {finding.vuln_type} at {finding.url}")
+
+    if len(notable) > 3:
+        lines.append(f"- ...and {len(notable) - 3} more high-severity finding(s)")
+
+    return "\n".join(lines)
+
+
+def _webhook_payload(webhook_url: str, message: str) -> dict:
+    host = urlparse(webhook_url).netloc.lower()
+    if "slack.com" in host:
+        return {"text": message}
+    return {"content": message}
+
+
+def _send_webhook_alert(webhook_url: str, message: str) -> None:
+    try:
+        requests.post(webhook_url, json=_webhook_payload(webhook_url, message), timeout=10)
+    except requests.RequestException as exc:
+        logger.warning("Webhook alert failed: %s", exc)
+
+
+def _has_high_severity_findings(result: ScanResult) -> bool:
+    return any(_severity_value(f) in {"critical", "high"} for f in result.findings)
+
+
+def _maybe_send_webhook_alert(self, result: ScanResult) -> None:
+    webhook_url = getattr(self.config, "webhook_url", None)
+    if not webhook_url or not _has_high_severity_findings(result):
+        return
+
+    message = _format_webhook_message(result, self.config)
+    _send_webhook_alert(webhook_url, message)
 
 
 def _deduplicate_endpoints(endpoints: List[Endpoint]) -> List[Endpoint]:

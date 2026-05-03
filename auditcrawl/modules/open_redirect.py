@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from typing import List
@@ -28,6 +29,10 @@ REDIRECT_PAYLOADS = [
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings = []
     parsed = urlparse(endpoint.url)
     params = {k: v[0] if isinstance(v, list) else v
@@ -43,7 +48,7 @@ def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List
             new_params[param] = payload
             test_url = urlunparse(parsed._replace(query=urlencode(new_params)))
 
-            resp = client.get(test_url, allow_redirects=False)
+            resp = await client.get_async(test_url, allow_redirects=False)
             if resp is None:
                 continue
 

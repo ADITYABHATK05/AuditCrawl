@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from typing import List
@@ -32,6 +33,10 @@ def _neighboring_ids(val: str) -> List[str]:
 
 
 def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
+    return asyncio.run(scan_async(endpoint, client, lab_mode))
+
+
+async def scan_async(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List[Finding]:
     findings = []
     parsed = urlparse(endpoint.url)
     params = {k: v[0] if isinstance(v, list) else v
@@ -43,7 +48,7 @@ def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List
         if not value:
             continue
 
-        baseline_resp = client.get(endpoint.url)
+        baseline_resp = await client.get_async(endpoint.url)
         if baseline_resp is None or baseline_resp.status_code in (401, 403, 404):
             continue
         baseline_text = baseline_resp.text
@@ -56,7 +61,7 @@ def scan(endpoint: Endpoint, client: HttpClient, lab_mode: bool = False) -> List
             new_params[param] = alt_id
             test_url = urlunparse(parsed._replace(query=urlencode(new_params)))
 
-            resp = client.get(test_url)
+            resp = await client.get_async(test_url)
             if resp is None:
                 continue
 
