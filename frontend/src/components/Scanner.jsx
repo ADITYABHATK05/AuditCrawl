@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { flaskStartScan, flaskGetJobStatus, flaskStopScan, getAllScans } from '../api'
 import ScanArchiveTable from './ScanArchiveTable'
-import BatchScanForm from './BatchScanForm'
-import BatchScanHistory from './BatchScanHistory'
 
 const LEVELS = [
   { value: '1', name: 'Level 1 — Shallow', desc: '20 pages · depth 1 · ~30s' },
@@ -354,10 +352,6 @@ export default function Scanner() {
         </div>
         <ScanArchiveTable limit={8} />
       </div>
-
-      {/* Batch Scanning */}
-      <BatchScanForm />
-      <BatchScanHistory />
     </div>
   )
 }

@@ -384,8 +384,8 @@ input::placeholder { color: var(--muted); }
 }
 
 .sev-critical { background: rgba(255,51,85,0.2); color: var(--danger); }
-.sev-high { background: rgba(255,160,64,0.2); color: var(--accent3); }
-.sev-medium { background: rgba(255,176,32,0.15); color: var(--warn); }
+.sev-high { background: rgba(255,140,0,0.2); color: #ff8c00; }
+.sev-medium { background: rgba(255,215,0,0.2); color: #ffd700; }
 .sev-low { background: rgba(64,170,255,0.15); color: var(--info); }
 .sev-info { background: rgba(74,96,112,0.3); color: var(--muted); }
 

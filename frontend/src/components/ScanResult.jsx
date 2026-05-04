@@ -28,8 +28,8 @@ function StatusBadge({ status }) {
 function SeverityDonut({ counts }) {
   const levels = [
     { key: "critical", label: "Critical", color: "#ff3355" },
-    { key: "high", label: "High", color: "#ffa040" },
-    { key: "medium", label: "Medium", color: "#ffb020" },
+    { key: "high", label: "High", color: "#ff8c00" },
+    { key: "medium", label: "Medium", color: "#ffd700" },
     { key: "low", label: "Low", color: "#40aaff" },
   ];
 
