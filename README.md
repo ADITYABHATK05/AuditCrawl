@@ -100,6 +100,42 @@ python main.py --base-url http://localhost:5000 --target-domain localhost --xss 
 python -m unittest discover -s tests -v
 ```
 
+## Recent Updates (Last 2 Months)
+
+### Yesterday & Today
+- **UI/UX Improvements**
+  - Fixed Vite build error by removing stale batch scan component imports from Scanner.jsx
+  - Enhanced severity badge color distinction for better visual clarity:
+    - Critical: Red (#ff3355)
+    - High: Dark Orange (#ff8c00) — improved from light orange
+    - Medium: Bright Gold (#ffd700) — improved from golden-orange
+    - Low: Blue (#40aaff)
+  - Colors now clearly distinguishable at a glance for quick severity assessment
+
+- **Codebase Cleanup**
+  - Removed 7 unused legacy files to reduce bloat (2174 lines deleted):
+    - `main.py` — Old CLI entry point
+    - `safe_site.py` — Deprecated demo site
+    - `lab_app.py` — Legacy Flask labs server
+    - `backend/api.py` — Replaced by FastAPI implementation
+    - `auditcrawl/poc.py` — Unused PoC generator
+    - `auditcrawl/report.py` — Unused report generator
+    - `auditcrawl/scanners.py` — Unused scanner module
+  - Removed batch scan frontend components while preserving backend infrastructure
+  - All functionality verified working; no impact to active features
+
+### Previous Updates (Last 2 Months)
+- Individual scan functionality with job queue management
+- Real-time job status tracking and cancellation
+- PDF/JSON/XML export formats with full vulnerability details
+- Finding severity classification (Critical/High/Medium/Low)
+- Interactive findings viewer with filtering and ROI calculation
+- Archive system for historical scan tracking
+- Database persistence with SQLAlchemy ORM
+- FastAPI backend with Vite + React frontend
+- Batch scan orchestration with distributed scanning support
+- Comprehensive logging and debug output
+
 ## Notes on Accuracy
 
 The scanner aims to reduce false positives with baseline comparisons and conservative confirmations, but findings should still be manually verified.
