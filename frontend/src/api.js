@@ -1,7 +1,14 @@
 // Single source of truth for the backend API base URL.
-// If you run the FastAPI backend on a different port, set:
-//   VITE_API_BASE=http://127.0.0.1:8000/api
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
+// Smart detection: if VITE_API_BASE is set, use it; otherwise try to auto-detect based on hostname
+let API_BASE = import.meta.env.VITE_API_BASE;
+
+if (!API_BASE) {
+  // Auto-detect backend URL based on current hostname
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  const backendPort = import.meta.env.VITE_BACKEND_PORT || "8000";
+  API_BASE = `${protocol}//${hostname}:${backendPort}/api`;
+}
 
 export async function flaskStartScan(payload) {
   const res = await fetch(`${API_BASE}/scan`, {

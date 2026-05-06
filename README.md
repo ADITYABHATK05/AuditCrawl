@@ -65,20 +65,33 @@ python main.py \
 
 ## Run Services
 
-Backend API:
+**Quick Start** (everything on same machine):
 
 ```bash
-uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+# Terminal 1: Backend
+uvicorn backend.app.main:app --reload
+
+# Terminal 2: Frontend  
+cd frontend
+npm run dev
 ```
 
-Frontend dev server:
+Then open `http://localhost:5173/` in your browser.
+
+**For running on different machines**, see [SETUP_GUIDE.md](SETUP_GUIDE.md) for environment configuration options.
+
+Backend API (detailed):
+
+```bash
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Frontend dev server (detailed):
 
 ```bash
 cd frontend
-npm run dev -- --host 127.0.0.1
+npm run dev
 ```
-
-Open `http://127.0.0.1:3000/` in your browser after the frontend starts.
 
 Enable only selected modules (otherwise all are enabled by default):
 
