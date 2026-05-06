@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import ExportButtons from "./ExportButtons";
 import SeverityMap from "./SeverityMap";
 import ScanPulse from "./ScanPulse";
 import TopologyMap from "./TopologyMap";
@@ -337,11 +336,6 @@ export default function ScanResults({ scan, onBack }) {
             ⬇ Triage CSV
           </button>
         </div>
-      )}
-
-      {/* Export to Security Tools */}
-      {scan.run_id && !isRunning && (
-        <ExportButtons runId={scan.run_id} />
       )}
 
       {/* Main Tabs */}

@@ -129,31 +129,6 @@ export async function cancelBatchScan(batchId) {
   return res.json();
 }
 
-// Export Formats API
-export async function exportScanToBurp(runId) {
-  const res = await fetch(`${API_BASE}/scan/${runId}/export/burp`);
-  if (!res.ok) {
-    throw new Error("Failed to export to Burp format");
-  }
-  return res.json();
-}
-
-export async function exportScanToZap(runId) {
-  const res = await fetch(`${API_BASE}/scan/${runId}/export/zap`);
-  if (!res.ok) {
-    throw new Error("Failed to export to ZAP format");
-  }
-  return res.json();
-}
-
-export async function exportScanToSarif(runId) {
-  const res = await fetch(`${API_BASE}/scan/${runId}/export/sarif`);
-  if (!res.ok) {
-    throw new Error("Failed to export to SARIF format");
-  }
-  return res.json();
-}
-
 export async function compareScanRuns(runId1, runId2) {
   const res = await fetch(`${API_BASE}/scans/compare/${runId1}/${runId2}`);
   if (!res.ok) {
