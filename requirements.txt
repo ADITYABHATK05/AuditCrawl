@@ -1,16 +1,26 @@
-# Core scanner dependencies (keep existing ones from your project)
+# Core scanner dependencies
 requests>=2.32.0
 aiohttp>=3.9.0
 beautifulsoup4>=4.12.0
 lxml>=5.2.0
 urllib3>=2.2.0
+selenium>=4.21.0
 
-# API backend
-flask>=3.0.0
-flask-cors>=4.0.0
+# FastAPI backend
+fastapi>=0.111.0
+uvicorn>=0.30.0
 
-# PDF report generation
+# Database
+sqlalchemy>=2.0.30
+aiosqlite>=0.20.0
+
+# Data validation & forms
+pydantic>=2.7.0
+python-multipart>=0.0.9
+
+# HTTP client
+httpx>=0.27.0
+
+# AI & Report generation
+google-generativeai>=0.7.2
 reportlab>=4.2.0
-
-# Existing project deps (add yours here if different)
-# sqlalchemy>=2.0.0   # optional SQLite extension
