@@ -18,6 +18,7 @@ from app.api.schemas import (
     ScanEnqueueResponse,
     ScanRequest,
     ScanResponse,
+    ChatRequest,
 )
 from app.core.config import settings
 from app.db.database import get_session
@@ -38,6 +39,21 @@ async def enqueue_scan(payload: ScanRequest) -> ScanEnqueueResponse:
         message=job.message,
     )
 
+
+@router.post("/chat")
+async def copilot_chat(payload: ChatRequest):
+    from app.services.ai_helper import chat_with_copilot
+    history_dicts = [{"role": msg.role, "content": msg.content} for msg in payload.history]
+    
+    # Run in threadpool since gemini call is blocking
+    from fastapi.concurrency import run_in_threadpool
+    response = await run_in_threadpool(
+        chat_with_copilot, 
+        payload.message, 
+        history_dicts, 
+        payload.finding_context
+    )
+    return {"response": response}
 
 @router.post("/scan-repo", response_model=RepoScanResponse)
 async def scan_github_repo(payload: RepoScanRequest) -> RepoScanResponse:

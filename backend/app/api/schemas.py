@@ -4,6 +4,15 @@ from pydantic import BaseModel, Field, HttpUrl
 from typing import Literal, Optional
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "model"]
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = []
+    finding_context: dict = {}
+
 class ScanRequest(BaseModel):
     target_url: HttpUrl
     scan_level: Literal["1", "2", "3"] = "2"

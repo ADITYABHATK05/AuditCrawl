@@ -161,3 +161,20 @@ export async function compareScanRuns(runId1, runId2) {
   }
   return res.json();
 }
+
+export async function copilotChat(message, history, findingContext) {
+  const res = await fetch(`${API_BASE}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      history,
+      finding_context: findingContext
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to chat with Copilot");
+  }
+  return res.json();
+}

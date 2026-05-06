@@ -75,44 +75,11 @@ class JobManager:
             print(f"SCAN INITIATED: {payload.target_url}")
             print(f"{'='*60}\n")
             
-            # Parse scan level to config
-            scan_level = int(payload.scan_level)
-            level_config = {
-                1: {"max_depth": 1, "max_pages": 20},
-                2: {"max_depth": 3, "max_pages": 80},
-                3: {"max_depth": 5, "max_pages": 200},
-            }
-            config_args = level_config.get(scan_level, level_config[2])
-            
             # Extract domain from target URL
             parsed_url = urlparse(str(payload.target_url))
             domain = parsed_url.netloc or str(payload.target_url)
             
-            print(f"✓ Parsed URL: {str(payload.target_url)}")
-            print(f"✓ Domain: {domain}")
-            print(f"✓ Scan Level: {scan_level} ({config_args})\n")
-            
-            # Create scanner config
-            config = ScanConfig(
-                base_url=str(payload.target_url),
-                target_domain=domain,
-                max_depth=config_args["max_depth"],
-                max_pages=config_args["max_pages"],
-                output_dir=settings.output_dir,
-                safe_mode=True,
-                lab_mode=False,
-                enable_xss=True,
-                enable_sqli=True,
-                enable_ssrf=True,
-                enable_auth=False,
-                enable_rce=False,
-                enable_idor=True,
-                enable_csrf=True,
-                enable_headers=True,
-                enable_open_redirect=True,
-                enable_leaked_assets=True,
-                request_timeout=10,
-            )
+            is_github = domain.lower() == "github.com"
             
             # Progress callback
             def progress_callback(stage, message, pct):
@@ -120,32 +87,132 @@ class JobManager:
                 job["message"] = message
                 print(f"[{stage}] {message} - {pct}%")
             
-            # Run the scanner in a thread pool to avoid blocking
-            def run_scanner():
-                try:
-                    print(f"\n[SCANNER] Creating Scanner with config:")
-                    print(f"  Base URL: {config.base_url}")
-                    print(f"  Target domain: {config.target_domain}")
-                    print(f"  Max depth: {config.max_depth}")
-                    print(f"  Max pages: {config.max_pages}")
+            if is_github:
+                print(f"[SCANNER] Detected GitHub repository URL. Running SAST scanner...")
+                parts = [p for p in parsed_url.path.split("/") if p]
+                if len(parts) >= 2:
+                    owner, repo = parts[0], parts[1]
+                    if repo.endswith(".git"):
+                        repo = repo[:-len(".git")]
+                    clone_url = f"https://github.com/{owner}/{repo}.git"
+                else:
+                    raise ValueError("Expected GitHub URL like https://github.com/owner/repo")
+                
+                def run_repo_scanner():
+                    import tempfile
+                    from git import Repo
+                    from app.services.repo_sast_scanner import scan_repo_for_secrets_and_misconfig
                     
-                    scanner = Scanner(config)
-                    scanner.set_progress_callback(progress_callback)
-                    
-                    print(f"[SCANNER] Starting scan...")
-                    result = scanner.run()
-                    print(f"[SCANNER] Scan complete:")
-                    print(f"  Endpoints found: {len(result.endpoints)}")
-                    print(f"  Vulnerabilities found: {len(result.findings)}")
-                    return result
-                except Exception as e:
-                    print(f"[SCANNER ERROR] {type(e).__name__}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    raise
-            
-            loop = asyncio.get_event_loop()
-            scan_result = await loop.run_in_executor(_executor, run_scanner)
+                    with tempfile.TemporaryDirectory(prefix="auditcrawl_repo_") as tmp:
+                        dst = Path(tmp) / "repo"
+                        progress_callback("Setup", f"Cloning {clone_url}...", 10)
+                        try:
+                            Repo.clone_from(clone_url, str(dst), depth=1, single_branch=True)
+                        except Exception as e:
+                            raise ValueError(f"Failed to clone repository: {str(e)}. Make sure it is public.")
+                        
+                        progress_callback("Scanning", "Scanning repository files...", 50)
+                        findings, leaked_assets = scan_repo_for_secrets_and_misconfig(dst)
+                        
+                        class MockFinding:
+                            def __init__(self, f):
+                                self.vuln_type = getattr(f, 'type', 'Unknown')
+                                self.severity = MockJobObj(value=getattr(f, 'severity', 'Medium'))
+                                self.url = getattr(f, 'url', '')
+                                self.evidence = getattr(f, 'evidence', '')
+                                self.method = ""
+                                self.parameter = getattr(f, 'vulnerable_snippet', '')
+                                self.remediation = getattr(f, 'fix_snippet', '')
+                                self.payload = getattr(f, 'vulnerable_snippet', '')
+                                
+                        class MockLeakedAsset:
+                            def __init__(self, a):
+                                self.vuln_type = f"Leaked {a.get('asset_type', 'Secret')}"
+                                self.severity = MockJobObj(value=a.get('severity', 'High'))
+                                self.url = a.get('endpoint', '')
+                                self.evidence = "Secret detected in repository file."
+                                self.method = ""
+                                self.parameter = a.get('value', '')
+                                self.remediation = "Rotate the exposed secret immediately and use environment variables."
+                                self.payload = a.get('value', '')
+                        
+                        mock_findings = [MockFinding(f) for f in findings]
+                        mock_findings.extend([MockLeakedAsset(a) for a in leaked_assets])
+                        
+                        scan_res = MockJobObj(
+                            endpoints=[],
+                            findings=mock_findings,
+                            summary_by_severity=lambda: {},
+                            report_pdf_path=""
+                        )
+                        return scan_res
+                
+                loop = asyncio.get_event_loop()
+                scan_result = await loop.run_in_executor(_executor, run_repo_scanner)
+                scan_level_db = "repo"
+            else:
+                # Parse scan level to config
+                scan_level = int(payload.scan_level)
+                level_config = {
+                    1: {"max_depth": 1, "max_pages": 20},
+                    2: {"max_depth": 3, "max_pages": 80},
+                    3: {"max_depth": 5, "max_pages": 200},
+                }
+                config_args = level_config.get(scan_level, level_config[2])
+                
+                print(f"✓ Parsed URL: {str(payload.target_url)}")
+                print(f"✓ Domain: {domain}")
+                print(f"✓ Scan Level: {scan_level} ({config_args})\n")
+                
+                # Create scanner config
+                config = ScanConfig(
+                    base_url=str(payload.target_url),
+                    target_domain=domain,
+                    max_depth=config_args["max_depth"],
+                    max_pages=config_args["max_pages"],
+                    output_dir=settings.output_dir,
+                    safe_mode=True,
+                    lab_mode=False,
+                    enable_xss=True,
+                    enable_sqli=True,
+                    enable_ssrf=True,
+                    enable_auth=False,
+                    enable_rce=False,
+                    enable_idor=True,
+                    enable_csrf=True,
+                    enable_headers=True,
+                    enable_open_redirect=True,
+                    enable_leaked_assets=True,
+                    request_timeout=10,
+                )
+                
+                # Run the scanner in a thread pool to avoid blocking
+                def run_scanner():
+                    try:
+                        print(f"\n[SCANNER] Creating Scanner with config:")
+                        print(f"  Base URL: {config.base_url}")
+                        print(f"  Target domain: {config.target_domain}")
+                        print(f"  Max depth: {config.max_depth}")
+                        print(f"  Max pages: {config.max_pages}")
+                        
+                        scanner = Scanner(config)
+                        scanner.set_progress_callback(progress_callback)
+                        
+                        print(f"[SCANNER] Starting scan...")
+                        result = scanner.run()
+                        print(f"[SCANNER] Scan complete:")
+                        print(f"  Endpoints found: {len(result.endpoints)}")
+                        print(f"  Vulnerabilities found: {len(result.findings)}")
+                        return result
+                    except Exception as e:
+                        print(f"[SCANNER ERROR] {type(e).__name__}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        raise
+                
+                loop = asyncio.get_event_loop()
+                scan_result = await loop.run_in_executor(_executor, run_scanner)
+                scan_level_db = str(scan_level)
             
             print(f"Saving {len(scan_result.findings)} findings to database...")
             
@@ -154,7 +221,7 @@ class JobManager:
                 # Create scan run
                 scan_run = ScanRun(
                     target_url=str(payload.target_url),
-                    scan_level=payload.scan_level,
+                    scan_level=scan_level_db,
                     status="completed"
                 )
                 session.add(scan_run)
@@ -162,7 +229,17 @@ class JobManager:
                 
                 # Save each finding
                 for finding in scan_result.findings:
-                    if finding.vuln_type.startswith("Leaked "):
+                    vuln_type_lower = finding.vuln_type.lower()
+                    is_leaked = (
+                        finding.vuln_type.startswith("Leaked ") or
+                        "secret" in vuln_type_lower or
+                        "token" in vuln_type_lower or
+                        "key" in vuln_type_lower or
+                        "credential" in vuln_type_lower or
+                        "password" in vuln_type_lower
+                    )
+                    
+                    if is_leaked:
                         # Save as leaked asset
                         asset_type = finding.vuln_type.replace("Leaked ", "")
                         leaked_asset = LeakedAsset(

@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import ExportButtons from "./ExportButtons";
+import SeverityMap from "./SeverityMap";
+import ScanPulse from "./ScanPulse";
+import TopologyMap from "./TopologyMap";
+import { staggerContainer, fadeSlideUp, cardHover } from "../utils/motionVariants";
 
 const SEV_ORDER = ["critical", "high", "medium", "low", "info"];
 const SEV_WEIGHT = { critical: 4, high: 3, medium: 2, low: 1, info: 0.5 };
@@ -11,25 +15,6 @@ const EFFORT_OPTIONS = [
   { key: "L", value: 3, label: "Large" },
 ];
 const PREFS_KEY = "auditcrawl.scanResultsPrefs";
-const listVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.07,
-      delayChildren: 0.06,
-    },
-  },
-};
-
-const listItemVariants = {
-  hidden: { opacity: 0, y: 14 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.24, ease: "easeOut" },
-  },
-};
 
 function severityClass(sev) {
   const s = (sev || "info").toLowerCase();
@@ -37,11 +22,14 @@ function severityClass(sev) {
 }
 
 function StatusBadge({ status }) {
+  const isRunning = status === "running" || status === "queued";
   return (
-    <span className={`badge badge-${status}`}>
-      {(status === "running" || status === "queued") && <span className="pulse" />}
-      {status}
-    </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <span className={`badge badge-${status}`}>
+        {status}
+      </span>
+      <ScanPulse isActive={isRunning} />
+    </div>
   );
 }
 
@@ -126,8 +114,9 @@ function FindingCard({ finding, fixValue, effortKey, onEffortChange, isTopRoi })
     <motion.div
       className={`finding-card ${open ? "expanded" : ""}`}
       onClick={() => setOpen((v) => !v)}
-      whileHover={{ scale: 1.01, y: -2 }}
-      transition={{ type: "spring", stiffness: 240, damping: 18 }}
+      variants={cardHover}
+      whileHover="whileHover"
+      whileTap="whileTap"
     >
       <div className="finding-header">
         <span className={severityClass(finding.severity)}>{finding.severity || "info"}</span>
@@ -325,7 +314,12 @@ export default function ScanResults({ scan, onBack }) {
 
       {isRunning && (
         <div className="progress-track">
-          <div className="progress-bar" />
+          <motion.div 
+            className="progress-bar" 
+            initial={{ width: 0 }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 1.5, ease: "easeInOut", repeat: Infinity }}
+          />
         </div>
       )}
 
@@ -400,7 +394,13 @@ export default function ScanResults({ scan, onBack }) {
               className={`filter-tab ${viewMode === "grouped" ? "active" : ""}`}
               onClick={() => setViewMode("grouped")}
             >
-              Grouped by Type
+              Severity Map
+            </button>
+            <button
+              className={`filter-tab ${viewMode === "topology" ? "active" : ""}`}
+              onClick={() => setViewMode("topology")}
+            >
+              Topology Map
             </button>
             <button
               className={`filter-tab ${viewMode === "list" ? "active" : ""}`}
@@ -465,229 +465,30 @@ export default function ScanResults({ scan, onBack }) {
             {isRunning ? "Scan in progress…" : filterSev === "all" && filterType === "all" ? "No findings detected." : `No findings matching filters.`}
           </div>
         </div>
+      ) : viewMode === "topology" ? (
+        <motion.div variants={staggerContainer} initial="hidden" animate="visible" style={{ marginTop: '1.5rem' }}>
+          <motion.div variants={fadeSlideUp}>
+            <TopologyMap scan={scan} findings={filtered} />
+          </motion.div>
+        </motion.div>
       ) : viewMode === "grouped" ? (
         // Grouped view - by Severity, then by Type
-        <motion.div variants={listVariants} initial="hidden" animate="visible">
-          {SEV_ORDER.map(sev => {
-            // Get all findings for this severity level
-            const sevFindings = findings.filter(f => (f.severity || "info").toLowerCase() === sev);
-            if (sevFindings.length === 0) return null;
-            
-            // Apply filters
-            const filtered = sevFindings.filter(f => {
-              const typeMatch = filterType === "all" || (f.type || "unknown") === filterType;
-              return typeMatch;
-            });
-            if (filtered.length === 0) return null;
-            
-            // Get unique types for this severity
-            const typesForSev = [...new Set(filtered.map(f => f.type || "unknown"))];
-            
-            return (
-              <motion.div key={sev} variants={listItemVariants} style={{ marginBottom: "2rem" }}>
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  marginBottom: "1.25rem",
-                  paddingBottom: "1rem",
-                  borderBottom: "2px solid var(--border)"
-                }}>
-                  <span className={severityClass(sev)} style={{ fontSize: "0.85rem" }}>
-                    {sev.toUpperCase()}
-                  </span>
-                  <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-                    {filtered.length} finding{filtered.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                
-                {/* Group by type within severity */}
-                {(sortMode === "fixValue"
-                  ? [...typesForSev].sort((a, b) => {
-                      const aScore = sortedUniqueFindings.find((x) => x.type === a)?.fixValue || 0;
-                      const bScore = sortedUniqueFindings.find((x) => x.type === b)?.fixValue || 0;
-                      return bScore - aScore;
-                    })
-                  : typesForSev
-                ).map(type => {
-                  const typeInstances = filtered.filter(f => (f.type || "unknown") === type);
-                  const typeScore = sortedUniqueFindings.find((x) => x.type === type);
-                  
-                  // Group by description to deduplicate
-                  const byDescription = {};
-                  typeInstances.forEach(finding => {
-                    const desc = finding.description || "No description";
-                    if (!byDescription[desc]) {
-                      byDescription[desc] = {
-                        description: desc,
-                        evidence: finding.evidence,
-                        param: finding.param,
-                        poc: finding.poc,
-                        urls: []
-                      };
-                    }
-                    byDescription[desc].urls.push({
-                      url: finding.url,
-                      severity: finding.severity,
-                      type: finding.type
-                    });
-                  });
-                  
-                  return (
-                    <motion.div
-                      key={`${sev}-${type}`}
-                      variants={listItemVariants}
-                      style={{ marginBottom: "1.5rem", marginLeft: "0.5rem" }}
-                    >
-                      <div style={{
-                        fontFamily: "var(--display)",
-                        fontWeight: 600,
-                        fontSize: "1rem",
-                        color: "var(--text)",
-                        marginBottom: "1rem",
-                        paddingBottom: "0.5rem",
-                        borderBottom: "1px solid rgba(74, 96, 112, 0.3)"
-                      }}>
-                        {type}
-                        <div className="type-roi-row">
-                          <span className="finding-roi-score">Fix Value: {typeScore?.fixValue?.toFixed(1) || "0.0"}</span>
-                          {topRoiTypes.has(type) && <span className="roi-badge">Best ROI</span>}
-                          <label className="finding-roi-label">
-                            Effort
-                            <select
-                              value={typeScore?.effortKey || "M"}
-                              onChange={(e) =>
-                                setEffortByType((prev) => ({ ...prev, [type]: e.target.value }))
-                              }
-                              className="finding-roi-select"
-                            >
-                              {EFFORT_OPTIONS.map((opt) => (
-                                <option key={opt.key} value={opt.key}>{opt.key}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                      </div>
-                      
-                      {/* Show each unique finding once with all affected URLs */}
-                      {Object.entries(byDescription).map(([descKey, finding]) => (
-                        <motion.div
-                          key={`${sev}-${type}-${descKey}`}
-                          style={{
-                            background: "var(--bg)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                            padding: "1rem",
-                            marginBottom: "0.75rem"
-                          }}
-                          whileHover={{ scale: 1.01, y: -1 }}
-                          transition={{ type: "spring", stiffness: 240, damping: 20 }}
-                        >
-                          <div style={{
-                            fontFamily: "var(--display)",
-                            fontWeight: 600,
-                            fontSize: "0.95rem",
-                            color: "var(--text)",
-                            marginBottom: "0.75rem"
-                          }}>
-                            {finding.description}
-                          </div>
-                          
-                          <div style={{ marginBottom: "0.5rem" }}>
-                            <span style={{ fontSize: "0.75rem", color: "var(--muted)", textTransform: "uppercase" }}>
-                              Affected Endpoints ({finding.urls.length})
-                            </span>
-                          </div>
-                          
-                          <div style={{ 
-                            display: "flex",
-                            flexDirection: "column",
-                            marginBottom: "0.75rem"
-                          }}>
-                            {finding.urls.map((item, idx) => (
-                              <div 
-                                key={idx}
-                                style={{ 
-                                  fontSize: "0.8rem", 
-                                  color: "var(--muted)",
-                                  fontFamily: "var(--mono)",
-                                  wordBreak: "break-all"
-                                }}
-                              >
-                                {item.url}
-                              </div>
-                            ))}
-                          </div>
-                          
-                          {finding.evidence && (
-                            <>
-                              <div style={{
-                                fontSize: "0.75rem",
-                                color: "var(--muted)",
-                                textTransform: "uppercase",
-                                marginBottom: "0.3rem"
-                              }}>
-                                Evidence
-                              </div>
-                              <div style={{
-                                background: "#050709",
-                                border: "1px solid var(--border)",
-                                borderRadius: "5px",
-                                padding: "0.6rem 0.85rem",
-                                fontFamily: "var(--mono)",
-                                fontSize: "0.8rem",
-                                color: "var(--accent)",
-                                overflow: "auto",
-                                marginBottom: "0.75rem",
-                                wordBreak: "break-all"
-                              }}>
-                                {finding.evidence}
-                              </div>
-                            </>
-                          )}
-                          
-                          {finding.poc && (
-                            <>
-                              <div style={{
-                                fontSize: "0.75rem",
-                                color: "var(--muted)",
-                                textTransform: "uppercase",
-                                marginBottom: "0.3rem"
-                              }}>
-                                PoC (Educational)
-                              </div>
-                              <div style={{
-                                background: "#050709",
-                                border: "1px solid var(--border)",
-                                borderRadius: "5px",
-                                padding: "0.6rem 0.85rem",
-                                fontFamily: "var(--mono)",
-                                fontSize: "0.8rem",
-                                color: "var(--accent)",
-                                overflow: "auto",
-                                wordBreak: "break-all"
-                              }}>
-                                {finding.poc}
-                              </div>
-                            </>
-                          )}
-                        </motion.div>
-                      ))}
-                    </motion.div>
-                  );
-                })}
-              </motion.div>
-            );
-          })}
-        </motion.div>
+        <SeverityMap 
+          findings={findings}
+          filterType={filterType}
+          sortMode={sortMode}
+          sortedUniqueFindings={sortedUniqueFindings}
+          topRoiTypes={topRoiTypes}
+          setEffortByType={setEffortByType}
+        />
       ) : (
         // List view
-        <motion.div variants={listVariants} initial="hidden" animate="visible">
+        <motion.div variants={staggerContainer} initial="hidden" animate="visible">
         {filteredForList.map((f, idx) => {
           const type = f.type || "unknown";
           const score = sortedUniqueFindings.find((x) => x.type === type);
           return (
-            <motion.div key={idx} variants={listItemVariants}>
+            <motion.div key={idx} variants={fadeSlideUp}>
               <FindingCard
                 finding={f}
                 fixValue={score?.fixValue || 0}
@@ -737,28 +538,77 @@ export default function ScanResults({ scan, onBack }) {
           ) : null}
 
           {scan.leaked_assets && scan.leaked_assets.length > 0 ? (
-            <motion.div variants={listVariants} initial="hidden" animate="visible">
-            {scan.leaked_assets.map((asset, idx) => (
-              <motion.div key={idx} className="finding-card" variants={listItemVariants} whileHover={{ scale: 1.01, y: -1 }}>
-                <div className="finding-header">
-                  <span className={severityClass(asset.severity)}>{asset.severity}</span>
-                  <span className="finding-type">{asset.asset_type}</span>
-                </div>
-                <div className="finding-url">{asset.endpoint}</div>
-                <div className="finding-body">
-                  <div>
-                    <div className="field-label">Leaked Value</div>
-                    <div className="code-block" style={{
-                      fontFamily: "monospace",
-                      wordBreak: "break-all",
-                      maxWidth: "100%"
-                    }}>
-                      {asset.value}
-                    </div>
+            <motion.div variants={staggerContainer} initial="hidden" animate="visible">
+            {(() => {
+              const assets = scan.leaked_assets || [];
+              const grouped = assets.reduce((acc, a) => {
+                const type = a.asset_type || 'Unknown';
+                const value = String(a.value || '');
+                const key = `${type}::${value}`;
+                if (!acc[key]) {
+                  acc[key] = {
+                    asset_type: type,
+                    value,
+                    severity: a.severity || 'Low',
+                    endpoints: [],
+                  };
+                }
+                if (a.endpoint) acc[key].endpoints.push(a.endpoint);
+                return acc;
+              }, {});
+
+              const groups = Object.values(grouped)
+                .map((g) => ({
+                  ...g,
+                  endpoints: Array.from(new Set(g.endpoints)),
+                }))
+                .sort((a, b) => {
+                  const weight = (s) => {
+                    const v = String(s || 'info').toLowerCase();
+                    if (v === 'critical') return 5;
+                    if (v === 'high') return 4;
+                    if (v === 'medium') return 3;
+                    if (v === 'low') return 2;
+                    return 1;
+                  };
+                  const w = weight(b.severity) - weight(a.severity);
+                  if (w !== 0) return w;
+                  return String(a.asset_type).localeCompare(String(b.asset_type));
+                });
+
+              return groups.map((g, idx) => (
+                <motion.div key={idx} className="finding-card" variants={fadeSlideUp} whileHover={{ scale: 1.01, y: -1 }}>
+                  <div className="finding-header">
+                    <span className={severityClass(g.severity)}>{g.severity}</span>
+                    <span className="finding-type">{g.asset_type}</span>
+                    <span style={{ color: 'var(--muted)', fontSize: '0.8rem', marginLeft: 'auto' }}>
+                      {g.endpoints.length} file{g.endpoints.length === 1 ? '' : 's'}
+                    </span>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                  <div className="finding-body">
+                    <div>
+                      <div className="field-label">Leaked Value</div>
+                      <div className="code-block" style={{
+                        fontFamily: "monospace",
+                        wordBreak: "break-all",
+                        maxWidth: "100%"
+                      }}>
+                        {g.value.length > 300 ? `${g.value.slice(0, 300)}…` : g.value}
+                      </div>
+                    </div>
+                    {g.endpoints.length > 0 && (
+                      <div style={{ marginTop: '0.8rem' }}>
+                        <div className="field-label">Locations</div>
+                        <div className="code-block" style={{ whiteSpace: 'pre-wrap' }}>
+                          {g.endpoints.slice(0, 10).join('\n')}
+                          {g.endpoints.length > 10 ? `\n… +${g.endpoints.length - 10} more` : ''}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              ));
+            })()}
             </motion.div>
           ) : (
             <div className="empty">
