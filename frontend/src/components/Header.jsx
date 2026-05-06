@@ -8,7 +8,8 @@ export default function Header({ scanCount }) {
   const isArchive = location.pathname === '/archive'
 
   return (
-    <header className="header">
+    <header className="glass-nav sticky top-0 z-50">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 md:px-6">
       <button className="header-logo" onClick={() => navigate('/scanner')} title="Go to scanner">
         <span className="logo-icon" aria-hidden="true">
           <span className="logo-ring" />
@@ -19,20 +20,21 @@ export default function Header({ scanCount }) {
           <span className="logo-sub">Web Security Scanner</span>
         </span>
       </button>
-      <nav className="nav">
+      <nav className="flex items-center gap-2">
         <button
-          className={`nav-btn ${isScanner ? "active" : ""}`}
+          className={`${isScanner ? "btn-primary-clean" : "btn-ghost-clean"}`}
           onClick={() => navigate('/scanner')}
         >
           New Scan
         </button>
         <button
-          className={`nav-btn ${isArchive ? "active" : ""}`}
+          className={`${isArchive ? "btn-primary-clean" : "btn-ghost-clean"}`}
           onClick={() => navigate('/archive')}
         >
           History {scanCount > 0 && `(${scanCount})`}
         </button>
       </nav>
+      </div>
     </header>
   );
 }

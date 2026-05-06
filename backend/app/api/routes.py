@@ -10,14 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.schemas import (
     BatchScanRequest,
     FindingOut,
+    LeakedAssetOut,
     JobStatusResponse,
+    RepoScanRequest,
+    RepoScanResponse,
+    RepoLeakedAssetOut,
     ScanEnqueueResponse,
     ScanRequest,
     ScanResponse,
 )
 from app.core.config import settings
 from app.db.database import get_session
-from app.db.models import ScanRun, VulnerabilityFinding
+from app.db.models import ScanRun, VulnerabilityFinding, LeakedAsset
 from app.services.job_queue import job_manager
 
 
@@ -32,6 +36,91 @@ async def enqueue_scan(payload: ScanRequest) -> ScanEnqueueResponse:
         status=job.status,
         progress=job.progress,
         message=job.message,
+    )
+
+
+@router.post("/scan-repo", response_model=RepoScanResponse)
+async def scan_github_repo(payload: RepoScanRequest) -> RepoScanResponse:
+    """
+    Clone a *public* GitHub repo into a temp dir, run a lightweight SAST pass,
+    then delete the clone automatically.
+    """
+    from urllib.parse import urlparse
+    import tempfile
+
+    from fastapi import HTTPException
+    from fastapi.concurrency import run_in_threadpool
+
+    parsed = urlparse(payload.github_url.strip())
+    if parsed.scheme not in {"https"}:
+        raise HTTPException(status_code=400, detail="Only https GitHub URLs are allowed")
+    if parsed.netloc.lower() != "github.com":
+        raise HTTPException(status_code=400, detail="Only github.com repository URLs are allowed")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Credentials in URL are not allowed")
+
+    parts = [p for p in parsed.path.split("/") if p]
+    if len(parts) < 2:
+        raise HTTPException(status_code=400, detail="Expected URL like https://github.com/owner/repo")
+
+    owner, repo = parts[0], parts[1]
+    if repo.endswith(".git"):
+        repo = repo[: -len(".git")]
+    if not owner or not repo:
+        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
+
+    clone_url = f"https://github.com/{owner}/{repo}.git"
+
+    def _clone_and_scan() -> tuple[list[dict], list[dict]]:
+        try:
+            from git import Repo  # GitPython
+        except Exception as e:
+            raise RuntimeError("GitPython is not installed. Add GitPython to requirements.txt") from e
+
+        from pathlib import Path
+        from app.services.repo_sast_scanner import scan_repo_for_secrets_and_misconfig
+
+        with tempfile.TemporaryDirectory(prefix="auditcrawl_repo_") as tmp:
+            dst = Path(tmp) / "repo"
+            Repo.clone_from(
+                clone_url,
+                str(dst),
+                depth=1,
+                single_branch=True,
+            )
+            findings, leaked_assets = scan_repo_for_secrets_and_misconfig(dst)
+            # TemporaryDirectory context guarantees cleanup.
+            return (
+                [
+                    {
+                        "type": f.type,
+                        "severity": f.severity,
+                        "url": f.url,
+                        "evidence": f.evidence,
+                        "param": "",
+                        "description": "",
+                        "poc": "",
+                        "vulnerable_snippet": f.vulnerable_snippet,
+                        "fix_snippet": f.fix_snippet,
+                    }
+                    for f in findings
+                ],
+                leaked_assets,
+            )
+
+    try:
+        findings_payload, leaked_assets_payload = await run_in_threadpool(_clone_and_scan)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Repository scan failed: {str(e)}")
+
+    return RepoScanResponse(
+        repo_url=payload.github_url,
+        status="completed",
+        findings_count=len(findings_payload),
+        findings=[FindingOut(**x) for x in findings_payload],
+        leaked_assets=[RepoLeakedAssetOut(**x) for x in leaked_assets_payload],
     )
 
 
@@ -80,6 +169,10 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
     rows = await session.execute(select(VulnerabilityFinding).where(VulnerabilityFinding.scan_run_id == run_id))
     findings = rows.scalars().all()
     
+    # Fetch leaked assets
+    asset_rows = await session.execute(select(LeakedAsset).where(LeakedAsset.scan_run_id == run_id))
+    leaked_assets = asset_rows.scalars().all()
+    
     # Extract domain from target URL
     from urllib.parse import urlparse
     parsed = urlparse(run.target_url)
@@ -100,6 +193,17 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
         for f in findings
     ]
 
+    leaked_assets_payload = [
+        {
+            "id": asset.id,
+            "asset_type": asset.asset_type,
+            "value": asset.value,
+            "severity": asset.severity,
+            "endpoint": asset.endpoint,
+        }
+        for asset in leaked_assets
+    ]
+
     # Count unique endpoints
     unique_endpoints = len(set(f.endpoint for f in findings))
 
@@ -113,6 +217,7 @@ async def get_scan(run_id: int, session: AsyncSession = Depends(get_session)) ->
         findings_count=len(findings_payload),
         endpoints_count=unique_endpoints,
         findings=[FindingOut(**x) for x in findings_payload],
+        leaked_assets=[LeakedAssetOut(**x) for x in leaked_assets_payload],
         pdf_path=str(Path(settings.output_dir) / f"run_{run_id}.pdf"),
     )
 

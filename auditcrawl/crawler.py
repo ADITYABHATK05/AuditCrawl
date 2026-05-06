@@ -89,7 +89,8 @@ class Crawler:
                 method="GET",
                 depth=depth,
                 content_type=content_type,
-                status_code=resp.status_code
+                status_code=resp.status_code,
+                response_text=resp.text
             )
 
             # Only parse HTML for links and forms

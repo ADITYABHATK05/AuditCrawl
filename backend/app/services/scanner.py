@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 
 from .snippet_library import fix_snippet_for
 from .payload_generator import detect_input_type, get_contextual_payloads
+from .leaked_asset_detector import LeakedAssetDetector
 
 
 @dataclass
@@ -209,6 +210,7 @@ class WebScanner:
                 page_findings.extend(self._check_jwt_vulnerabilities(page))
                 page_findings.extend(self._check_dom_xss(page))
                 page_findings.extend(self._check_api_misconfig(page))
+                page_findings.extend(self._check_leaked_assets(page))
                 return page_findings
 
             tasks = [asyncio.create_task(analyze_page(page)) for page in pages]
@@ -1476,6 +1478,29 @@ class WebScanner:
                             "fix_snippet": "Set Secure, HttpOnly, and SameSite=Strict (or Lax) on session cookies.",
                         }
                     )
+
+        return findings
+
+    def _check_leaked_assets(self, page: dict) -> list[dict]:
+        """Check for leaked sensitive information in page content."""
+        url = page["url"]
+        body = page.get("text", "")
+
+        if not body:
+            return []
+
+        findings = []
+        leaked_assets = LeakedAssetDetector.detect_leaked_assets(body, url)
+
+        for asset in leaked_assets:
+            findings.append({
+                "vulnerability_type": f"Leaked {asset['type']}",
+                "severity": asset["severity"],
+                "endpoint": asset["url"],
+                "evidence": f"Potentially leaked {asset['type']}: {asset['value'][:50]}{'...' if len(asset['value']) > 50 else ''}",
+                "vulnerable_snippet": self._snippet(body, asset["value"]),
+                "fix_snippet": f"Remove exposed {asset['type'].lower()} from public pages. Store sensitive data securely and never expose in client-side code or responses.",
+            })
 
         return findings
 

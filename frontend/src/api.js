@@ -23,6 +23,19 @@ export async function flaskStartScan(payload) {
   return res.json();
 }
 
+export async function scanGitHubRepo(github_url) {
+  const res = await fetch(`${API_BASE}/scan-repo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ github_url }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to scan repository");
+  }
+  return res.json();
+}
+
 export async function flaskGetJobStatus(jobId) {
   const res = await fetch(`${API_BASE}/jobs/${jobId}`);
   if (!res.ok) {

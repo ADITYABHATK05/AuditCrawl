@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getAllScans } from '../api';
+import { ArchiveSkeleton } from './SkeletonLoaders';
 
 function ArchiveSeverityDonut({ counts }) {
   const safeCounts = counts || {};
@@ -84,7 +85,7 @@ export default function ScanArchiveTable({ limit }) {
     };
   }, [limit]);
 
-  if (loading) return <div style={{ padding: '1rem', color: 'var(--muted)' }}>Loading archive...</div>;
+  if (loading) return <ArchiveSkeleton />;
 
   const withRisk = scans.map((scan) => {
     const counts = scan.severity_counts || {};
@@ -126,31 +127,32 @@ export default function ScanArchiveTable({ limit }) {
 
   return (
     <div className="table-container">
-      <div className="archive-toolbar">
+      <div className="archive-toolbar mb-5 flex flex-wrap items-center gap-2">
         <input
           type="text"
+          className="input-clean md:w-72"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search target URL..."
         />
-        <button className={`filter-tab ${riskFilter === 'all' ? 'active' : ''}`} onClick={() => setRiskFilter('all')}>All</button>
-        <button className={`filter-tab ${riskFilter === 'critical' ? 'active' : ''}`} onClick={() => setRiskFilter('critical')}>Critical {'>'} 0</button>
-        <button className={`filter-tab ${riskFilter === 'high' ? 'active' : ''}`} onClick={() => setRiskFilter('high')}>High {'>'} 0</button>
-        <select className="finding-roi-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+        <button className={`${riskFilter === 'all' ? 'btn-primary-clean' : 'btn-ghost-clean'}`} onClick={() => setRiskFilter('all')}>All</button>
+        <button className={`${riskFilter === 'critical' ? 'btn-primary-clean' : 'btn-ghost-clean'}`} onClick={() => setRiskFilter('critical')}>Critical {'>'} 0</button>
+        <button className={`${riskFilter === 'high' ? 'btn-primary-clean' : 'btn-ghost-clean'}`} onClick={() => setRiskFilter('high')}>High {'>'} 0</button>
+        <select className="input-clean w-auto min-w-36" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           <option value="newest">Newest</option>
           <option value="risk">Highest Risk</option>
           <option value="findings">Most Findings</option>
         </select>
       </div>
 
-      <div className="archive-compare">
+      <div className="archive-compare mb-5 flex flex-wrap items-center gap-2">
         <span className="archive-compare-title">Compare Runs</span>
-        <select className="finding-roi-select" value={compareA} onChange={(e) => setCompareA(e.target.value)}>
+        <select className="input-clean w-auto min-w-28" value={compareA} onChange={(e) => setCompareA(e.target.value)}>
           <option value="">Base run</option>
           {withRisk.map((scan) => <option key={scan.id} value={scan.id}>#{scan.id}</option>)}
         </select>
         <span style={{ color: 'var(--muted)' }}>vs</span>
-        <select className="finding-roi-select" value={compareB} onChange={(e) => setCompareB(e.target.value)}>
+        <select className="input-clean w-auto min-w-28" value={compareB} onChange={(e) => setCompareB(e.target.value)}>
           <option value="">Compare run</option>
           {withRisk.map((scan) => <option key={scan.id} value={scan.id}>#{scan.id}</option>)}
         </select>
@@ -165,7 +167,7 @@ export default function ScanArchiveTable({ limit }) {
         )}
       </div>
 
-      <table className="table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+      <table className="table w-full border-collapse text-left">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border)' }}>
             <th style={{ padding: '0.75rem' }}>Run ID</th>

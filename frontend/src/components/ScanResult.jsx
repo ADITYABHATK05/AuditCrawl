@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import ExportButtons from "./ExportButtons";
 
 const SEV_ORDER = ["critical", "high", "medium", "low", "info"];
@@ -10,6 +11,25 @@ const EFFORT_OPTIONS = [
   { key: "L", value: 3, label: "Large" },
 ];
 const PREFS_KEY = "auditcrawl.scanResultsPrefs";
+const listVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.07,
+      delayChildren: 0.06,
+    },
+  },
+};
+
+const listItemVariants = {
+  hidden: { opacity: 0, y: 14 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.24, ease: "easeOut" },
+  },
+};
 
 function severityClass(sev) {
   const s = (sev || "info").toLowerCase();
@@ -103,7 +123,12 @@ function SeverityDonut({ counts }) {
 function FindingCard({ finding, fixValue, effortKey, onEffortChange, isTopRoi }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className={`finding-card ${open ? "expanded" : ""}`} onClick={() => setOpen((v) => !v)}>
+    <motion.div
+      className={`finding-card ${open ? "expanded" : ""}`}
+      onClick={() => setOpen((v) => !v)}
+      whileHover={{ scale: 1.01, y: -2 }}
+      transition={{ type: "spring", stiffness: 240, damping: 18 }}
+    >
       <div className="finding-header">
         <span className={severityClass(finding.severity)}>{finding.severity || "info"}</span>
         <span className="finding-type">{finding.type}</span>
@@ -154,7 +179,7 @@ function FindingCard({ finding, fixValue, effortKey, onEffortChange, isTopRoi })
           )}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -164,6 +189,7 @@ export default function ScanResults({ scan, onBack }) {
   const [viewMode, setViewMode] = useState("grouped"); // "list" or "grouped"
   const [sortMode, setSortMode] = useState("severity");
   const [effortByType, setEffortByType] = useState({});
+  const [activeTab, setActiveTab] = useState("findings");
 
   // Restore persisted preferences when scan changes
   useEffect(() => {
@@ -324,49 +350,67 @@ export default function ScanResults({ scan, onBack }) {
         <ExportButtons runId={scan.run_id} />
       )}
 
-      {/* Stats */}
-      <div className="stats-bar">
-        <div className="stat-box">
-          <div className={`stat-val ${findings.length > 0 ? "red" : "green"}`}>{findings.length}</div>
-          <div className="stat-key">Total Findings</div>
-        </div>
-        <div className="stat-box">
-          <div className="stat-val">{vulnTypes.length}</div>
-          <div className="stat-key">Unique Vulnerabilities</div>
-        </div>
-        <div className="stat-box">
-          <div className="stat-val">{scan.endpoints_count || 0}</div>
-          <div className="stat-key">Endpoints</div>
-        </div>
-        {SEV_ORDER.slice(0, 3).map((s) => (
-          <div className="stat-box" key={s}>
-            <div className={`stat-val ${s === "critical" || s === "high" ? "red" : s === "medium" ? "orange" : ""}`}>
-              {bySev[s] || 0}
+      {/* Main Tabs */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", borderBottom: "1px solid var(--line)" }}>
+        <button
+          className={`filter-tab ${activeTab === "findings" ? "active" : ""}`}
+          onClick={() => setActiveTab("findings")}
+        >
+          Findings ({findings.length})
+        </button>
+        <button
+          className={`filter-tab ${activeTab === "leaked_assets" ? "active" : ""}`}
+          onClick={() => setActiveTab("leaked_assets")}
+        >
+          Leaked Assets ({scan.leaked_assets?.length || 0})
+        </button>
+      </div>
+
+      {activeTab === "findings" ? (
+        <div>
+          {/* Stats */}
+          <div className="stats-bar">
+            <div className="stat-box">
+              <div className={`stat-val ${findings.length > 0 ? "red" : "green"}`}>{findings.length}</div>
+              <div className="stat-key">Total Findings</div>
             </div>
-            <div className="stat-key">{s}</div>
+            <div className="stat-box">
+              <div className="stat-val">{vulnTypes.length}</div>
+              <div className="stat-key">Unique Vulnerabilities</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-val">{scan.endpoints_count || 0}</div>
+              <div className="stat-key">Endpoints</div>
+            </div>
+            {SEV_ORDER.slice(0, 3).map((s) => (
+              <div className="stat-box" key={s}>
+                <div className={`stat-val ${s === "critical" || s === "high" ? "red" : s === "medium" ? "orange" : ""}`}>
+                  {bySev[s] || 0}
+                </div>
+                <div className="stat-key">{s}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <SeverityDonut counts={bySev} />
+          <SeverityDonut counts={bySev} />
 
-      {/* View Mode Toggle */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.25rem" }}>
-        <button
-          className={`filter-tab ${viewMode === "grouped" ? "active" : ""}`}
-          onClick={() => setViewMode("grouped")}
-        >
-          Grouped by Type
-        </button>
-        <button
-          className={`filter-tab ${viewMode === "list" ? "active" : ""}`}
-          onClick={() => setViewMode("list")}
-        >
-          All Instances
-        </button>
-      </div>
+          {/* View Mode Toggle */}
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.25rem" }}>
+            <button
+              className={`filter-tab ${viewMode === "grouped" ? "active" : ""}`}
+              onClick={() => setViewMode("grouped")}
+            >
+              Grouped by Type
+            </button>
+            <button
+              className={`filter-tab ${viewMode === "list" ? "active" : ""}`}
+              onClick={() => setViewMode("list")}
+            >
+              All Instances
+            </button>
+          </div>
 
-      <div className="filter-tabs">
+          <div className="filter-tabs">
         <button
           className={`filter-tab ${sortMode === "severity" ? "active" : ""}`}
           onClick={() => setSortMode("severity")}
@@ -423,7 +467,7 @@ export default function ScanResults({ scan, onBack }) {
         </div>
       ) : viewMode === "grouped" ? (
         // Grouped view - by Severity, then by Type
-        <div>
+        <motion.div variants={listVariants} initial="hidden" animate="visible">
           {SEV_ORDER.map(sev => {
             // Get all findings for this severity level
             const sevFindings = findings.filter(f => (f.severity || "info").toLowerCase() === sev);
@@ -440,7 +484,7 @@ export default function ScanResults({ scan, onBack }) {
             const typesForSev = [...new Set(filtered.map(f => f.type || "unknown"))];
             
             return (
-              <div key={sev} style={{ marginBottom: "2rem" }}>
+              <motion.div key={sev} variants={listItemVariants} style={{ marginBottom: "2rem" }}>
                 <div style={{
                   display: "flex",
                   alignItems: "center",
@@ -490,7 +534,11 @@ export default function ScanResults({ scan, onBack }) {
                   });
                   
                   return (
-                    <div key={`${sev}-${type}`} style={{ marginBottom: "1.5rem", marginLeft: "0.5rem" }}>
+                    <motion.div
+                      key={`${sev}-${type}`}
+                      variants={listItemVariants}
+                      style={{ marginBottom: "1.5rem", marginLeft: "0.5rem" }}
+                    >
                       <div style={{
                         fontFamily: "var(--display)",
                         fontWeight: 600,
@@ -523,7 +571,7 @@ export default function ScanResults({ scan, onBack }) {
                       
                       {/* Show each unique finding once with all affected URLs */}
                       {Object.entries(byDescription).map(([descKey, finding]) => (
-                        <div 
+                        <motion.div
                           key={`${sev}-${type}-${descKey}`}
                           style={{
                             background: "var(--bg)",
@@ -532,6 +580,8 @@ export default function ScanResults({ scan, onBack }) {
                             padding: "1rem",
                             marginBottom: "0.75rem"
                           }}
+                          whileHover={{ scale: 1.01, y: -1 }}
+                          transition={{ type: "spring", stiffness: 240, damping: 20 }}
                         >
                           <div style={{
                             fontFamily: "var(--display)",
@@ -621,33 +671,36 @@ export default function ScanResults({ scan, onBack }) {
                               </div>
                             </>
                           )}
-                        </div>
+                        </motion.div>
                       ))}
-                    </div>
+                    </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       ) : (
         // List view
-        filteredForList.map((f, idx) => {
+        <motion.div variants={listVariants} initial="hidden" animate="visible">
+        {filteredForList.map((f, idx) => {
           const type = f.type || "unknown";
           const score = sortedUniqueFindings.find((x) => x.type === type);
           return (
-            <FindingCard
-              key={idx}
-              finding={f}
-              fixValue={score?.fixValue || 0}
-              effortKey={score?.effortKey || "M"}
-              isTopRoi={topRoiTypes.has(type)}
-              onEffortChange={(typeName, effortKey) =>
-                setEffortByType((prev) => ({ ...prev, [typeName || "unknown"]: effortKey }))
-              }
-            />
+            <motion.div key={idx} variants={listItemVariants}>
+              <FindingCard
+                finding={f}
+                fixValue={score?.fixValue || 0}
+                effortKey={score?.effortKey || "M"}
+                isTopRoi={topRoiTypes.has(type)}
+                onEffortChange={(typeName, effortKey) =>
+                  setEffortByType((prev) => ({ ...prev, [typeName || "unknown"]: effortKey }))
+                }
+              />
+            </motion.div>
           );
-        })
+        })}
+        </motion.div>
       )}
 
       {scan.report_html_path && (
@@ -659,6 +712,62 @@ export default function ScanResults({ scan, onBack }) {
       <div style={{ marginTop: "1.5rem" }}>
         <button className="btn btn-ghost" onClick={onBack}>← New Scan</button>
       </div>
+    </div>
+      ) : (
+        // Leaked Assets Tab
+        <div>
+          {scan.leaked_assets && scan.leaked_assets.length > 0 ? (
+            <div className="stats-bar" style={{ marginBottom: "1rem" }}>
+              <div className="stat-box">
+                <div className="stat-val">{scan.leaked_assets.length}</div>
+                <div className="stat-key">Total Leaked Assets</div>
+              </div>
+              {["High", "Medium", "Low"].map(sev => {
+                const count = scan.leaked_assets.filter(asset => asset.severity === sev).length;
+                return (
+                  <div className="stat-box" key={sev}>
+                    <div className={`stat-val ${sev === "High" ? "red" : sev === "Medium" ? "orange" : ""}`}>
+                      {count}
+                    </div>
+                    <div className="stat-key">{sev} Risk</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {scan.leaked_assets && scan.leaked_assets.length > 0 ? (
+            <motion.div variants={listVariants} initial="hidden" animate="visible">
+            {scan.leaked_assets.map((asset, idx) => (
+              <motion.div key={idx} className="finding-card" variants={listItemVariants} whileHover={{ scale: 1.01, y: -1 }}>
+                <div className="finding-header">
+                  <span className={severityClass(asset.severity)}>{asset.severity}</span>
+                  <span className="finding-type">{asset.asset_type}</span>
+                </div>
+                <div className="finding-url">{asset.endpoint}</div>
+                <div className="finding-body">
+                  <div>
+                    <div className="field-label">Leaked Value</div>
+                    <div className="code-block" style={{
+                      fontFamily: "monospace",
+                      wordBreak: "break-all",
+                      maxWidth: "100%"
+                    }}>
+                      {asset.value}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+            </motion.div>
+          ) : (
+            <div className="empty">
+              <div className="empty-icon">🔍</div>
+              <div className="empty-text">No leaked assets detected.</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

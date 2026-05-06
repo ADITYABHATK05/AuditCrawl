@@ -24,3 +24,9 @@ httpx>=0.27.0
 # AI & Report generation
 google-generativeai>=0.7.2
 reportlab>=4.2.0
+
+# Repo SAST scanning
+GitPython>=3.1.45
+
+# Email reports
+aiosmtplib>=3.0.2

@@ -18,6 +18,8 @@ app = FastAPI(title=settings.app_name)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
+    # Vite often auto-increments ports (5173, 5174, ...). Allow localhost/127.0.0.1 on 5170-5179 by regex.
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):517\d$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,6 +37,9 @@ async def startup_event() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await job_manager.start()
+    # Non-fatal startup hint for email configuration
+    if not settings.smtp_host:
+        print("Email reports: SMTP_HOST not set (email sending disabled).")
 
 
 @app.on_event("shutdown")

@@ -5,16 +5,16 @@ import ScanArchiveTable from '../components/ScanArchiveTable'
 export default function Archive() {
   return (
     <div className="page fade-in">
-      <div className="page-header">
-        <h1 className="page-title">Scan Archive</h1>
-        <p className="page-sub">All completed scan runs with their findings</p>
+      <div className="glass-card mb-6 p-6">
+        <h1 className="section-title-clean">Scan Archive</h1>
+        <p className="section-sub-clean">All completed scan runs with severity trends and quick comparison.</p>
       </div>
 
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-        <Link to="/scanner" className="btn btn-primary btn-sm">＋ New Scan</Link>
+      <div className="mb-6 flex gap-3">
+        <Link to="/scanner" className="btn-primary-clean">＋ New Scan</Link>
       </div>
 
-      <div className="card">
+      <div className="glass-card p-5 md:p-6">
         <ScanArchiveTable limit={50} />
       </div>
     </div>

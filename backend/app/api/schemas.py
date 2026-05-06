@@ -8,6 +8,13 @@ class ScanRequest(BaseModel):
     target_url: HttpUrl
     scan_level: Literal["1", "2", "3"] = "2"
     use_selenium: bool = False
+    # Keep this as a plain string to avoid hard dependency on `email-validator`.
+    # Basic validation is enforced by a regex (good enough for UI + SMTP usage).
+    email: Optional[str] = Field(
+        default=None,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+        description="Optional email to receive a scan summary report",
+    )
     # Authentication fields
     login_url: Optional[str] = None  # URL to perform login
     username: Optional[str] = None  # Username for authentication
@@ -46,6 +53,14 @@ class FindingOut(BaseModel):
     fix_snippet: str
 
 
+class LeakedAssetOut(BaseModel):
+    id: int
+    asset_type: str
+    value: str
+    severity: str
+    endpoint: str
+
+
 class ScanResponse(BaseModel):
     run_id: int
     target_url: str
@@ -56,6 +71,7 @@ class ScanResponse(BaseModel):
     findings_count: int
     endpoints_count: int = 0
     findings: list[FindingOut]
+    leaked_assets: list[LeakedAssetOut] = []
     pdf_path: str
 
 
@@ -74,3 +90,22 @@ class JobStatusResponse(BaseModel):
     run_id: int | None = None
     error: str | None = None
     result: ScanResponse | None = None
+
+
+class RepoScanRequest(BaseModel):
+    github_url: str = Field(..., description="Public GitHub repository URL (e.g. https://github.com/owner/repo)")
+
+
+class RepoLeakedAssetOut(BaseModel):
+    asset_type: str
+    value: str
+    severity: str
+    endpoint: str
+
+
+class RepoScanResponse(BaseModel):
+    repo_url: str
+    status: Literal["completed"]
+    findings_count: int
+    findings: list[FindingOut]
+    leaked_assets: list[RepoLeakedAssetOut] = []

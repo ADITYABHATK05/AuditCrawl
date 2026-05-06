@@ -14,7 +14,7 @@ from .config import ScanConfig
 from .http_client import HttpClient
 from .crawler import Crawler
 from .models import Endpoint, Finding, ScanResult, Severity
-from .modules import xss, sqli, ssrf, idor, csrf, headers, open_redirect, auth, rce
+from .modules import xss, sqli, ssrf, idor, csrf, headers, open_redirect, auth, rce, leaked_assets
 from .reporter import Reporter
 
 logger = logging.getLogger("auditcrawl.orchestrator")
@@ -86,6 +86,8 @@ class Scanner:
                     findings += await _safe_run_async(auth.scan_async, ep, self.client, cfg.lab_mode, "auth")
                 if cfg.enable_rce:
                     findings += await _safe_run_async(rce.scan_async, ep, self.client, cfg.lab_mode, "rce")
+                if cfg.enable_leaked_assets:
+                    findings += await _safe_run_async(leaked_assets.scan_async, ep, self.client, cfg.lab_mode, "leaked_assets")
 
             result.findings = _deduplicate_findings(findings)
             result.duration_seconds = time.monotonic() - start

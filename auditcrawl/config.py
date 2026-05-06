@@ -25,6 +25,7 @@ class ScanConfig:
     enable_csrf: bool = True
     enable_headers: bool = True
     enable_open_redirect: bool = True
+    enable_leaked_assets: bool = True
     enable_time_based_sqli: bool = False
 
     # auth

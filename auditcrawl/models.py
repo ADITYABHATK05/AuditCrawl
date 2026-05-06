@@ -30,6 +30,7 @@ class Endpoint:
     depth: int = 0
     content_type: str = ""
     status_code: int = 0
+    response_text: str = ""
 
     def __hash__(self):
         return hash((self.url, self.method))

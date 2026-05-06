@@ -22,6 +22,10 @@ class ScanRun(Base):
         back_populates="scan_run", cascade="all, delete-orphan"
     )
 
+    leaked_assets: Mapped[list["LeakedAsset"]] = relationship(
+        back_populates="scan_run", cascade="all, delete-orphan"
+    )
+
 
 class VulnerabilityFinding(Base):
     __tablename__ = "vulnerability_findings"
@@ -36,3 +40,16 @@ class VulnerabilityFinding(Base):
     fix_snippet: Mapped[str] = mapped_column(Text, nullable=False)
 
     scan_run: Mapped[ScanRun] = relationship(back_populates="findings")
+
+
+class LeakedAsset(Base):
+    __tablename__ = "leaked_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scan_run_id: Mapped[int] = mapped_column(ForeignKey("scan_runs.id"), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(1024), nullable=False)
+
+    scan_run: Mapped[ScanRun] = relationship(back_populates="leaked_assets")

@@ -5,7 +5,7 @@ from app.api.schemas import ScanRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.db.database import SessionLocal
-from app.db.models import ScanRun, VulnerabilityFinding
+from app.db.models import ScanRun, VulnerabilityFinding, LeakedAsset
 from app.core.config import settings
 from urllib.parse import urlparse
 import sys
@@ -110,6 +110,7 @@ class JobManager:
                 enable_csrf=True,
                 enable_headers=True,
                 enable_open_redirect=True,
+                enable_leaked_assets=True,
                 request_timeout=10,
             )
             
@@ -161,16 +162,29 @@ class JobManager:
                 
                 # Save each finding
                 for finding in scan_result.findings:
-                    vuln_finding = VulnerabilityFinding(
-                        scan_run_id=scan_run.id,
-                        vulnerability_type=finding.vuln_type,
-                        severity=finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
-                        endpoint=finding.url,
-                        evidence=finding.evidence[:1000],  # Limit to 1000 chars
-                        vulnerable_snippet=f"{finding.method} {finding.parameter}" if finding.parameter else finding.url,
-                        fix_snippet=finding.remediation[:500] if finding.remediation else "N/A"
-                    )
-                    session.add(vuln_finding)
+                    if finding.vuln_type.startswith("Leaked "):
+                        # Save as leaked asset
+                        asset_type = finding.vuln_type.replace("Leaked ", "")
+                        leaked_asset = LeakedAsset(
+                            scan_run_id=scan_run.id,
+                            asset_type=asset_type,
+                            value=finding.payload or finding.parameter or "N/A",  # Try to extract the actual value
+                            severity=finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
+                            endpoint=finding.url
+                        )
+                        session.add(leaked_asset)
+                    else:
+                        # Save as vulnerability finding
+                        vuln_finding = VulnerabilityFinding(
+                            scan_run_id=scan_run.id,
+                            vulnerability_type=finding.vuln_type,
+                            severity=finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
+                            endpoint=finding.url,
+                            evidence=finding.evidence[:1000],  # Limit to 1000 chars
+                            vulnerable_snippet=f"{finding.method} {finding.parameter}" if finding.parameter else finding.url,
+                            fix_snippet=finding.remediation[:500] if finding.remediation else "N/A"
+                        )
+                        session.add(vuln_finding)
                 
                 await session.commit()
                 job["run_id"] = scan_run.id
@@ -190,11 +204,100 @@ class JobManager:
             except Exception as _:
                 # Don't fail the scan completion if report export fails.
                 pass
+
+            email_note = ""
+
+            # Optional: email the report summary to the user
+            if getattr(payload, "email", None):
+                try:
+                    from app.services.mailer import build_scan_report_email_html, send_html_email
+
+                    # Build summary counts
+                    sev_counts = scan_result.summary_by_severity() if hasattr(scan_result, "summary_by_severity") else {}
+
+                    def _bucket(vuln_type: str) -> str:
+                        t = (vuln_type or "").lower()
+                        if "sql" in t:
+                            return "SQLi"
+                        if "ssrf" in t:
+                            return "SSRF"
+                        if "xss" in t:
+                            return "XSS"
+                        if "csrf" in t:
+                            return "CSRF"
+                        if "idor" in t:
+                            return "IDOR"
+                        if "open redirect" in t or "redirect" in t:
+                            return "Open Redirect"
+                        if "cors" in t:
+                            return "CORS"
+                        if "security misconfiguration" in t or "misconfig" in t or "header" in t:
+                            return "Security Headers/Misconfig"
+                        if "leaked" in t or "token" in t or "key" in t:
+                            return "Leaked Secrets"
+                        return "Other"
+
+                    vuln_type_counts: dict[str, int] = {}
+                    for f in getattr(scan_result, "findings", []) or []:
+                        vuln_type_counts[_bucket(getattr(f, "vuln_type", ""))] = vuln_type_counts.get(
+                            _bucket(getattr(f, "vuln_type", "")), 0
+                        ) + 1
+
+                    # Top findings (critical/high first)
+                    def _sev_weight(x) -> int:
+                        s = getattr(x.severity, "value", str(x.severity)).lower()
+                        return {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(s, 0)
+
+                    findings_sorted = sorted(getattr(scan_result, "findings", []) or [], key=_sev_weight, reverse=True)
+                    top_findings = [
+                        {
+                            "vulnerability_type": getattr(f, "vuln_type", "Finding"),
+                            "severity": getattr(f.severity, "value", str(f.severity)).title(),
+                            "endpoint": getattr(f, "url", ""),
+                            "evidence": getattr(f, "evidence", "") or "",
+                            "remediation": getattr(f, "remediation", "") or "",
+                        }
+                        for f in findings_sorted[:10]
+                    ]
+                    detailed_findings = [
+                        {
+                            "vulnerability_type": getattr(f, "vuln_type", "Finding"),
+                            "severity": getattr(f.severity, "value", str(f.severity)).title(),
+                            "endpoint": getattr(f, "url", ""),
+                            "evidence": getattr(f, "evidence", "") or "",
+                            "remediation": getattr(f, "remediation", "") or "",
+                        }
+                        for f in findings_sorted
+                    ]
+
+                    dashboard_url = f"{settings.frontend_url.rstrip('/')}/scan/backend/{job['run_id']}"
+                    html_body = build_scan_report_email_html(
+                        target_url=str(payload.target_url),
+                        run_id=int(job["run_id"]),
+                        severity_counts=sev_counts,
+                        vuln_type_counts=vuln_type_counts,
+                        top_findings=top_findings,
+                        detailed_findings=detailed_findings,
+                        dashboard_url=dashboard_url,
+                    )
+                    await send_html_email(
+                        to_email=str(payload.email),
+                        subject=f"AuditCrawl report — {domain} (run {job['run_id']})",
+                        html_body=html_body,
+                    )
+                    email_note = f" Email sent to {str(payload.email)}."
+                except Exception as mail_exc:
+                    # Don't fail the scan if email fails; surface info in job message.
+                    print(f"[MAIL ERROR] {type(mail_exc).__name__}: {mail_exc}")
+                    email_note = f" Email failed: {type(mail_exc).__name__}: {mail_exc}"
             
             print(f"Scan {job_id} completed successfully")
             job["status"] = "completed"
             job["progress"] = 100
-            job["message"] = f"Scan complete. Found {len(scan_result.findings)} vulnerabilities."
+            job["message"] = (
+                f"Scan complete. Found {len(getattr(scan_result, 'findings', []) or [])} vulnerabilities."
+                f"{email_note}"
+            )
             
         except Exception as e:
             print(f"\n!!! SCAN ERROR: {str(e)}")

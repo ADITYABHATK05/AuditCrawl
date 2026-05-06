@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { flaskStartScan, flaskGetJobStatus, flaskStopScan, getAllScans } from '../api'
+import { motion } from 'framer-motion'
+import { flaskStartScan, flaskGetJobStatus, flaskStopScan, getAllScans, scanGitHubRepo } from '../api'
 import ScanArchiveTable from './ScanArchiveTable'
 
 const LEVELS = [
@@ -13,6 +14,11 @@ const PROFILE_BY_LEVEL = {
   '1': { maxPages: 20, maxDepth: 1 },
   '2': { maxPages: 80, maxDepth: 3 },
   '3': { maxPages: 200, maxDepth: 5 },
+}
+
+function severityClass(sev) {
+  const s = (sev || 'info').toLowerCase()
+  return `sev sev-${s}`
 }
 
 function normalizeTargetUrl(value) {
@@ -47,6 +53,7 @@ function buildCoverageInsight(latestByLevel, currentLevel) {
 export default function Scanner() {
   const [targetUrl,     setTargetUrl]     = useState('http://127.0.0.1:5000')
   const [scanLevel,     setScanLevel]     = useState('2')
+  const [email,         setEmail]         = useState('')
   const [hasPermission, setHasPermission] = useState(false)
   const [job,           setJob]           = useState(null)   // { job_id, status, progress, message }
   const [error,         setError]         = useState('')
@@ -54,6 +61,11 @@ export default function Scanner() {
   const [resultRunId,   setResultRunId]   = useState(null)
   const [sameTargetRuns, setSameTargetRuns] = useState([])
   const [comparisonError, setComparisonError] = useState('')
+
+  const [repoUrl, setRepoUrl] = useState('https://github.com/owner/repo')
+  const [repoLoading, setRepoLoading] = useState(false)
+  const [repoError, setRepoError] = useState('')
+  const [repoResult, setRepoResult] = useState(null)
   const pollRef = useRef(null)
 
   const stopPoll = useCallback(() => {
@@ -102,6 +114,7 @@ export default function Scanner() {
       const data = await flaskStartScan({
         target_url: targetUrl,
         scan_level: scanLevel,
+        email: email.trim() ? email.trim() : null,
         has_permission: true,
       })
       if (data.error) { setError(data.error); setLoading(false); return }
@@ -110,6 +123,21 @@ export default function Scanner() {
     } catch (err) {
       setLoading(false)
       setError(err?.response?.data?.error || err.message || 'Failed to start scan')
+    }
+  }
+
+  async function handleRepoScan(e) {
+    e.preventDefault()
+    setRepoError('')
+    setRepoResult(null)
+    setRepoLoading(true)
+    try {
+      const data = await scanGitHubRepo(repoUrl)
+      setRepoResult(data)
+    } catch (err) {
+      setRepoError(err?.message || 'Failed to scan repository')
+    } finally {
+      setRepoLoading(false)
     }
   }
 
@@ -130,6 +158,9 @@ export default function Scanner() {
   const currentResult = job?.result || null
   const currentLevel = currentResult?.scan_level || scanLevel
   const currentProfile = PROFILE_BY_LEVEL[currentLevel] || PROFILE_BY_LEVEL['2']
+  const emailStatusMessage = job?.status === 'completed' && email.trim() ? (job?.message || '') : ''
+  const emailSent = emailStatusMessage.toLowerCase().includes('email sent')
+  const emailFailed = emailStatusMessage.toLowerCase().includes('email failed')
 
   useEffect(() => {
     let cancelled = false
@@ -198,6 +229,24 @@ export default function Scanner() {
           </div>
 
           <div className="form-group">
+            <label htmlFor="report-email">Email report (optional)</label>
+            <input
+              id="report-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              disabled={loading}
+            />
+            <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.35rem' }}>
+              If provided, AuditCrawl will email a detailed report after scan completion.
+            </div>
+            <div className="email-helper-note">
+              Tip: use a valid SMTP setup in backend to receive delivery updates.
+            </div>
+          </div>
+
+          <div className="form-group">
             <label>Scan Level</label>
             <div className="level-group">
               {LEVELS.map(lvl => (
@@ -260,11 +309,164 @@ export default function Scanner() {
         )}
       </div>
 
+      <div className="card" style={{ marginTop: '1.25rem' }}>
+        <div className="card-header" style={{ marginBottom: '0.75rem' }}>
+          <div className="card-title">GitHub Repository SAST (static)</div>
+        </div>
+        <form className="scan-form" onSubmit={handleRepoScan}>
+          <div className="form-group">
+            <label htmlFor="repo-url">GitHub Repo URL</label>
+            <input
+              id="repo-url"
+              type="url"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              required
+              disabled={repoLoading}
+            />
+          </div>
+          <div className="scan-action-row">
+            <button type="submit" className="btn btn-primary btn-lg" disabled={repoLoading}>
+              {repoLoading ? <><SpinIcon /> Scanning…</> : <>Scan Repository</>}
+            </button>
+          </div>
+        </form>
+
+        {repoError && (
+          <div className="alert alert-error" style={{ marginTop: '1rem' }}>
+            <ErrIcon /> {repoError}
+          </div>
+        )}
+
+        {repoResult && (
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{ color: 'var(--muted2)', marginBottom: '0.5rem' }}>
+              <strong>Repo:</strong> {repoResult.repo_url} · <strong>Findings:</strong> {repoResult.findings_count} ·{' '}
+              <strong>Leaked assets:</strong> {repoResult.leaked_assets?.length || 0}
+            </div>
+
+            {repoResult.leaked_assets && repoResult.leaked_assets.length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                <div className="section-title" style={{ marginTop: 0, marginBottom: '0.5rem' }}>Leaked assets</div>
+                {(() => {
+                  const assets = repoResult.leaked_assets || []
+                  // Group by (asset_type + value) so repeats show once, with all file paths.
+                  const grouped = assets.reduce((acc, a) => {
+                    const type = a.asset_type || 'Unknown'
+                    const value = String(a.value || '')
+                    const key = `${type}::${value}`
+                    if (!acc[key]) {
+                      acc[key] = {
+                        asset_type: type,
+                        value,
+                        severity: a.severity || 'info',
+                        endpoints: [],
+                      }
+                    }
+                    if (a.endpoint) acc[key].endpoints.push(a.endpoint)
+                    return acc
+                  }, {})
+
+                  const groups = Object.values(grouped)
+                    .map((g) => ({
+                      ...g,
+                      // de-dup endpoints
+                      endpoints: Array.from(new Set(g.endpoints)),
+                    }))
+                    .sort((a, b) => {
+                      // sort by severity (critical/high/medium/low/info), then by type
+                      const weight = (s) => {
+                        const v = String(s || 'info').toLowerCase()
+                        if (v === 'critical') return 5
+                        if (v === 'high') return 4
+                        if (v === 'medium') return 3
+                        if (v === 'low') return 2
+                        return 1
+                      }
+                      const w = weight(b.severity) - weight(a.severity)
+                      if (w !== 0) return w
+                      return String(a.asset_type).localeCompare(String(b.asset_type))
+                    })
+
+                  const shown = groups.slice(0, 25)
+
+                  return (
+                    <>
+                      {shown.map((g, idx) => (
+                        <div key={`asset-group-${idx}`} className="finding-card" style={{ cursor: 'default' }}>
+                          <div className="finding-header">
+                            <span className={severityClass(g.severity)}>{g.severity || 'info'}</span>
+                            <span className="finding-type">{g.asset_type}</span>
+                            <span style={{ color: 'var(--muted)', fontSize: '0.8rem', marginLeft: 'auto' }}>
+                              {g.endpoints.length} file{g.endpoints.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="finding-body">
+                            <div className="field-label">Value</div>
+                            <div className="code-block" style={{ wordBreak: 'break-all' }}>
+                              {g.value.length > 160 ? `${g.value.slice(0, 160)}…` : g.value}
+                            </div>
+                            <div className="field-label" style={{ marginTop: '0.6rem' }}>Locations</div>
+                            <div className="code-block" style={{ whiteSpace: 'pre-wrap' }}>
+                              {g.endpoints.slice(0, 10).join('\n')}
+                              {g.endpoints.length > 10 ? `\n… +${g.endpoints.length - 10} more` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {groups.length > 25 && (
+                        <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                          Showing first 25 unique leaked assets (grouped by type + value).
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+
+            <div className="section-title" style={{ marginTop: 0, marginBottom: '0.5rem' }}>SAST findings</div>
+            {(repoResult.findings || []).slice(0, 25).map((f, idx) => (
+              <div key={idx} className="finding-card" style={{ cursor: 'default' }}>
+                <div className="finding-header">
+                  <span className={severityClass(f.severity)}>{f.severity || 'info'}</span>
+                  <span className="finding-type">{f.type}</span>
+                </div>
+                <div className="finding-url">{f.url}</div>
+                {f.evidence && (
+                  <div className="finding-body">
+                    <div className="field-label">Evidence</div>
+                    <div className="code-block">{f.evidence}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {(repoResult.findings || []).length === 0 && (
+              <div className="empty" style={{ marginTop: '0.5rem' }}>
+                <div className="empty-text">No SAST findings detected (beyond leaked assets/misconfig rules).</div>
+              </div>
+            )}
+
+            {(repoResult.findings || []).length > 25 && (
+              <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                Showing first 25 findings.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {job && (
         <div className="job-card fade-in">
           <div className="job-header">
             <div className="job-status-indicator">
-              <span className={`pulse-dot ${isDone ? 'done' : isFail ? 'error' : ''}`} />
+              <motion.span
+                className={`pulse-dot ${isDone ? 'done' : isFail ? 'error' : ''}`}
+                animate={isRunning ? { scale: [1, 1.35, 1], opacity: [0.9, 0.45, 0.9] } : { scale: 1, opacity: 1 }}
+                transition={isRunning ? { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
+              />
               <span style={{ color: isDone ? 'var(--neon)' : isFail ? 'var(--red)' : 'var(--muted2)' }}>
                 {{ queued: 'Queued', running: 'Scanning', completed: 'Complete',
                    failed: 'Failed', cancelled: 'Cancelled' }[job.status] ?? job.status}
@@ -293,6 +495,13 @@ export default function Scanner() {
               style={{ width: `${pct}%`, background: isFail ? 'var(--red)' : undefined }}
             />
           </div>
+        </div>
+      )}
+
+      {emailStatusMessage && (
+        <div className={`alert ${emailSent ? 'alert-info' : emailFailed ? 'alert-error' : 'alert-info'}`} style={{ marginTop: '1rem' }}>
+          {emailSent ? <InfoIcon /> : emailFailed ? <ErrIcon /> : <InfoIcon />}
+          <span>{emailStatusMessage}</span>
         </div>
       )}
 
